@@ -42,3 +42,22 @@ Results go to `results/<wallet>.json`.
 | GeckoTerminal API | yes, no key | pool OHLCV + recent trades | price context (Norway already uses it) |
 | DexScreener API | yes, no key | pair info, liquidity, volume | safety / context |
 | Solana Tracker | paid credits (almost used up) | wallet PnL, trades | avoid |
+
+## First result (18 Nov 2026, 1,500 most recent transactions per wallet)
+
+The four bot-like wallets from the Cupsey research:
+
+| Wallet | Window | Closed trades | Realized PnL | Hold (median) | Bot mean (tested trades) | Copy +1 slot | Copy +5 slots |
+|---|---|---|---|---|---|---|---|
+| `sssssDdM…` | 6.1 h | 506 | **+29.2 SOL (+5.8 %)** | 20 s | +6.6 % | −3.9 % (median −7.2 %) | +1.2 % (median −3.7 %) |
+| `omegoMAe…` | 1.8 h | 159 | +1.7 SOL (+1.2 %) | 70 s | +16.7 % | +4.9 % (median −10.0 %) | +9.9 % (median −9.6 %) |
+| `STorreSu…` | 1.7 h | 128 | −1.1 SOL (−0.9 %) | 52 s | +7.3 % | +1.4 % (median −4.4 %) | +1.5 % (median −2.4 %) |
+| `3qvuM3U5…` | 3.7 h | 653 | −1.9 SOL (−0.8 %) | 22 s | +1.7 % | −6.1 % (median −4.6 %) | −4.0 % (median −2.5 %) |
+
+* Only `sssssDdM` is clearly profitable in its window, at about 5 SOL an hour.
+* Copying it one slot late turns +6.6 % per trade into −3.9 %. Its edge is in the first few hundred
+  milliseconds, so mirroring it does not work.
+* The positive copy *means* of `omegoMAe` and `STorreSu` come from a few big winners; their medians are
+  −4 % to −10 % and the samples are 26–37 trades. That is noise, not an edge.
+* All four lose 0.2–0.3 SOL to failed transactions in a few hours (up to 35 % of their transactions fail),
+  the cost of competing for speed.
