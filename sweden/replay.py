@@ -10,13 +10,14 @@ Realism built in:
     both sides, NET_COST SOL per transaction for priority fee / tip;
   * "price" for TP/SL is what selling our tokens would return right now, not the chart price, so a TP of +50%
     means +50% in our pocket after fees.
-  * a coin that was trading within 2 min of a collector gap is excluded (trades may be missing); so is one
-    launched too close to the end of the data to be complete.
+  * every coin's trades must form an unbroken chain (the curve's token reserve moves by exactly each trade's
+    amount); a coin with a missing trade inside its window is excluded, so is one launched too close to the end
+    of the data to be complete.
 
 Usage:  python3 sweden/replay.py [--size 0.5] [--lat 5] [--min-age 30] [--max-age 180] [--horizon 7200]
                                  [--nofilter] [--set dev_pct=0.05 ...]
 """
-import argparse, bisect, collections, glob, gzip, json, os, statistics as st, sys
+import argparse, bisect, collections, glob, gzip, itertools, json, os, statistics as st, sys, zlib
 
 DATA = os.environ.get("SWEDEN_DATA", os.path.join(os.path.dirname(__file__), "..", "data"))
 SUPPLY = 1e15                    # raw token units (1e9 tokens, 6 decimals)
@@ -66,15 +67,31 @@ def load():
                         coins[mint]["ev"].append((slot, order, r))
                     elif kind == "G":
                         coins[mint]["grad"] = slot
-        except (EOFError, OSError):
-            continue                                 # file still being written
+        except (EOFError, OSError, zlib.error):
+            continue                                 # file still being written / damaged tail
     for c in coins.values():
-        c["ev"].sort(key=lambda e: (e[0], e[1]))
+        chain(c)
     gaps = []
     gp = os.path.join(DATA, "gaps.jsonl")
     if os.path.exists(gp):
         gaps = [json.loads(l) for l in open(gp) if l.strip()]
     return coins, gaps, t_min, t_max
+
+
+def chain(c):
+    """Order trades by slot and, inside a slot, by the curve's token reserve (each trade moves it by exactly its
+    token amount). c["broken"] = slot of the first trade that does not follow from the previous one (a trade is
+    missing from the data there), else None."""
+    vt, out, c["broken"] = c["vtok0"], [], None
+    for slot, grp in itertools.groupby(sorted(c["ev"], key=lambda e: (e[0], e[1])), key=lambda e: e[0]):
+        g = list(grp)
+        while g:
+            k = next((i for i, e in enumerate(g) if (vt - e[2][8] if e[2][6] else vt + e[2][8]) == e[2][10]), None)
+            if k is None and c["broken"] is None:
+                c["broken"] = slot
+            e = g.pop(k or 0)
+            out.append(e); vt = e[2][10]
+    c["ev"] = out
 
 
 def annotate_history(coins):
@@ -88,13 +105,6 @@ def annotate_history(coins):
         c["copy"] = any(k in names and c["ts"] - names[k] < 3 * 86400 for k in keys)
         for k in keys:
             names.setdefault(k, c["ts"])
-
-
-def active_near(c, g, pad=120):
-    """True if the coin traded within `pad` seconds of the gap (then trades may be missing)."""
-    if g["from"] <= c["ts"] + pad:
-        return True
-    return any(g["from"] - pad <= e[2][3] <= g["to"] + pad for e in c["ev"])
 
 
 class State:
@@ -283,9 +293,12 @@ def main():
             excl["quoted in another token"] += 1; continue
         if c["ts"] + need > t1:
             excl["too recent (window not complete)"] += 1; continue
-        if any(g["from"] <= c["ts"] + need and g["to"] >= c["ts"] - 5 and active_near(c, g) for g in gaps):
-            excl["was trading during a collector gap"] += 1; continue
+        if c["broken"] is not None and c["broken"] <= c["slot"] + need / SLOT_S:
+            excl["trade missing from the data"] += 1; continue
         usable.append(c)
+    sol = [c for c in coins.values() if not c["quote"]]
+    print(f"data completeness: {sum(c['broken'] is None for c in sol) / max(1, len(sol)):.0%} of SOL coins have an "
+          f"unbroken trade chain (needs to be high, see check_feed.py)")
     print(f"data {((t1 - t0) / 3600):.1f} h | launches {len(coins)} | usable {len(usable)} | excluded {dict(excl)}")
     print(f"mode: {'NO FILTER (buy every coin at ' + str(a.min_age) + ' s)' if a.nofilter else 'filter v0'} | "
           f"size {a.size} SOL | latency {a.lat} slots ({a.lat * SLOT_S:.1f} s) | horizon {a.horizon / 60:.0f} min")

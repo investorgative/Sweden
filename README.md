@@ -27,9 +27,15 @@ git clone https://github.com/investorgative/Sweden.git sweden
 cd sweden
 git checkout claude/memecoin-trading-bot-research-xru22m   # until merged into main
 chmod +x setup.sh && ./setup.sh
+./venv/bin/python sweden/check_feed.py   # FIRST: is the free feed complete on your connection? (~3 min)
 ./start.sh            # tmux session "Sweden"
 ./status.sh           # what has been collected
 ```
+**Run `check_feed.py` before collecting.** It listens to the feed for 90 s and compares it with the real list of
+pump.fun transactions from the chain. Only start the collector if the combined coverage is ≥ 98 %.
+In the cloud sandbox this was built in, the free feed delivered only **65–69 %** (all connections stall together
+for several seconds, then disconnect). That may be the sandbox's network proxy; a direct home connection may be
+much better. If the Pi is also low, the fix is a better feed (free Helius key or PumpPortal), not more connections.
 Let it run for a few days. `./stop.sh` stops it; restarting continues where it was.
 Autostart after reboot: `crontab -e`, add `@reboot sleep 30 && /home/<user>/sweden/start.sh`.
 
@@ -38,7 +44,7 @@ Autostart after reboot: `crontab -e`, add `@reboot sleep 30 && /home/<user>/swed
 * Network: the free endpoint sends every pump.fun transaction, including the ~70 % that fail, so the download is
   large: about 2 MB/s before websocket compression on 4 connections. If your internet has a data cap, use 2
   connections: `SWEDEN_WS=wss://api.mainnet-beta.solana.com,wss://api.mainnet-beta.solana.com ./start.sh`
-  (more reconnect gaps, and the replay excludes coins that were trading during a gap).
+  (check the coverage with `check_feed.py` first).
 * No API key, no account, no cost.
 
 ### Analysing
@@ -54,6 +60,10 @@ before −Y % (after fees, our size and latency), and fixed TP / SL results.
 dev holds ≤ 5 % and has not sold · launch-slot bundle ≤ 10 % · snipers (first buy 1–3 slots after launch) ≤ 15 % ·
 top-10 holders ≤ 30 % · ≥ 15 traders, ≥ 20 buys · top-3 wallets ≤ 40 % of trades · ≤ 30 % of buys with identical
 size · creator launched ≤ 2 other coins in 24 h · name/ticker not used in the previous 72 h · ≥ 3 SOL net inflow.
+
+**Data check:** every coin's trades must form an unbroken chain (the curve's token reserve moves by exactly the
+traded amount). A coin with a missing trade in its window is excluded and the share of complete coins is printed
+first. If that share is low, the results lean towards quiet coins and should not be trusted.
 
 **Realism:** the fill comes LAT slots after the signal (default 5 ≈ 2 s) with every trade in between applied first;
 our own buy and sell move the curve; pump.fun fee + creator fee on both sides; 0.0015 SOL per transaction.

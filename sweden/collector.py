@@ -1,7 +1,7 @@
 """SWEDEN collector — records every pump.fun coin from its launch, for days, from free public RPC.
 
 Stores raw events (not verdicts), so any filter / entry delay / TP / SL can be replayed later:
-  data/YYYY-MM-DD/events-HH.jsonl.gz   one JSON list per event: [slot, sig8, <record from pump_events.decode>]
+  data/YYYY-MM-DD/events-HH-<run>.jsonl.gz   one JSON list per event: [slot, sig8, <record from pump_events.decode>]
   data/gaps.jsonl                      seconds in which no connection was receiving (coins overlapping a gap
                                        are excluded by the replay)
   data/status.json                     live counters (updated every 30 s)
@@ -24,6 +24,7 @@ ENDPOINTS = [e.strip() for e in os.environ.get(
     "SWEDEN_WS", ",".join(["wss://api.mainnet-beta.solana.com"] * 4)).split(",") if e.strip()]
 DATA = os.environ.get("SWEDEN_DATA", os.path.join(os.path.dirname(__file__), "..", "data"))
 KEEP_MINT_DAYS = 3                   # keep recording trades of a coin for this long after its launch
+RUN = int(time.time())               # each run writes its own files, so a crash can't corrupt another run's data
 SUB = {"jsonrpc": "2.0", "id": 1, "method": "logsSubscribe",
        "params": [{"mentions": [PUMP]}, {"commitment": "confirmed"}]}
 
@@ -51,7 +52,7 @@ class Store:
         log(f"tracking {len(self.mints)} coins from earlier runs")
 
     def _file(self):
-        key = time.strftime("%Y-%m-%d/events-%H", time.gmtime())
+        key = time.strftime("%Y-%m-%d/events-%H", time.gmtime()) + f"-{RUN}"
         if key != self.key:
             if self.f:
                 self.f.close()
