@@ -96,6 +96,10 @@ class Collector:
         self.started = time.time()
         self.gap_start = None
         self.last_msg = 0.0
+        try:                                             # downtime since the previous run counts as a gap
+            self.gap_start = int(json.load(open(os.path.join(DATA, "status.json")))["updated"])
+        except Exception:
+            pass
         self.stop = False
 
     def handle(self, cid, raw):
