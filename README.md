@@ -61,3 +61,12 @@ The four bot-like wallets from the Cupsey research:
   −4 % to −10 % and the samples are 26–37 trades. That is noise, not an edge.
 * All four lose 0.2–0.3 SOL to failed transactions in a few hours (up to 35 % of their transactions fail),
   the cost of competing for speed.
+
+### How `sssssDdM` executes (25 recent buys inspected)
+* Trades directly on the **pump.fun bonding curve** (program `6EF8…`, before graduation), about 83 round trips an hour,
+  median hold 20 s (10 % under 1 s, 90 % under 7 min).
+* Every buy is sent through several **paid transaction-landing services at once** (Nozomi, Astralane, Jito and
+  others, 0.001 SOL tip each) plus a priority fee of about 0.0005 SOL.
+* Conclusion: the edge is speed infrastructure, not a rule a slower bot can run. A clone would need the same
+  low-latency data feed and landing services and would then compete with this bot for the same entries.
+  Not pursued.
