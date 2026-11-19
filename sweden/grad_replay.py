@@ -9,14 +9,17 @@ Rules (all thresholds are options):
   3. it bounces at least BOUNCE (default 20 %) off the low (the first move up);
   4. it pulls back PULLBACK (default 10 %) from that bounce high without breaking the low -> buy. A break of the
      low makes it the new low (wait for a new bounce); a new high above the old one starts over at step 2;
-  5. market cap at the signal at most MAX_MCAP_USD (default 100k); the signal must come within WINDOW after graduation;
+  5. market cap at the signal at most MAX_MCAP_USD (default 100k); the coin is at most MAX_AGE old at the signal
+     (default 6 h since launch: what the trader sees in Fomo's Graduated tab, which lists coins created in the last
+     24 h that graduated and, per Fomo's help center, applies no safety exclusion to that list - warning labels only)
+     and the signal comes within WINDOW of graduation;
   6. exit at TP or SL, 1:1 (+X % / -X % on what selling returns, after fees), or after HORIZON.
 Fills: LAT slots after the signal / exit trigger with every trade in between applied first, constant-product pool
 using the reserves reported by the swap events (pool base, pool quote + virtual quote), PumpSwap fee from the
 events on both sides, our own buy stays in the pool, NET_COST SOL per transaction.
 
 Usage:  python3 sweden/grad_replay.py [--kind normal|mayhem] [--dd-min 0.3 --dd-max 0.75 --bounce 0.2
-          --pullback 0.1] [--tp 0.25 0.35 0.5] [--max-mcap-usd 100000] [--sol-usd 140] [--window 7200]
+          --pullback 0.1] [--tp 0.25 0.35 0.5] [--max-mcap-usd 100000] [--sol-usd 140] [--max-age 21600] [--window 21600]
           [--horizon 14400] [--size 0.5] [--lat 5] [--nofilter] [--at 60]   (--at N: baseline, buy N s after graduation)
 """
 import argparse, bisect, json, os, statistics as st, sys, urllib.request
@@ -58,10 +61,10 @@ def value(Q, B, q, s_in, fee):
     return Q * q / (B + q) * (1 - fee)
 
 
-def signal(path, a, mcap_cap_sol, grad_slot):
+def signal(path, a, mcap_cap_sol, grad_slot, launch_slot):
     """First slot at which the dip / bounce / pullback pattern fires, or None."""
     peak, low, hi, mode = 0.0, None, None, "drop"
-    end = grad_slot + int(a.window / R.SLOT_S)
+    end = min(grad_slot + int(a.window / R.SLOT_S), launch_slot + int(a.max_age / R.SLOT_S))
     for slot, B, Q, _ in path:
         if slot > end or B <= 0:
             return None
@@ -117,7 +120,8 @@ def main():
     ap.add_argument("--tp", type=float, nargs="+", default=[0.25, 0.35, 0.5], help="TP = SL (1:1)")
     ap.add_argument("--max-mcap-usd", type=float, default=100000)
     ap.add_argument("--sol-usd", type=float, help="SOL price in USD (default: CoinGecko now)")
-    ap.add_argument("--window", type=float, default=7200, help="signal must come within this many s of graduation")
+    ap.add_argument("--window", type=float, default=21600, help="signal must come within this many s of graduation")
+    ap.add_argument("--max-age", type=float, default=21600, help="coin at most this many s old (since launch) at the signal")
     ap.add_argument("--horizon", type=float, default=14400, help="max hold in seconds")
     ap.add_argument("--size", type=float, default=0.5)
     ap.add_argument("--lat", type=int, default=5)
@@ -168,13 +172,13 @@ def main():
             f"dip {a.dd_min:.0%}-{a.dd_max:.0%} from the post-graduation high, bounce {a.bounce:.0%}, "
             f"pullback {a.pullback:.0%}, mcap <= ${a.max_mcap_usd:,.0f} ({cap_sol:.0f} SOL at ${usd:.0f})")
     print(f"{a.kind} coins | {mode} | filter {'off' if a.nofilter else 'on'} | size {a.size} SOL | "
-          f"latency {a.lat} slots | window {a.window / 3600:.1f} h | horizon {a.horizon / 3600:.1f} h")
+          f"latency {a.lat} slots | max age {a.max_age / 3600:.1f} h | horizon {a.horizon / 3600:.1f} h")
 
     sigs = []
     for c in cands:
         path = pool_path(c)
         g = c["pool"][0]
-        s = g + int(a.at / R.SLOT_S) if a.at is not None else signal(path, a, cap_sol, g)
+        s = g + int(a.at / R.SLOT_S) if a.at is not None else signal(path, a, cap_sol, g, c["slot"])
         if s is not None and s + a.lat < path[-1][0]:
             sigs.append((c, path, s))
     print(f"signals: {len(sigs)} of {len(cands)} coins"

@@ -107,7 +107,9 @@ TP / SL are measured on what selling our tokens would return, so +50 % means +50
 A manual trader's rules for freshly graduated coins, as a replay on the recorded PumpSwap trades:
 on-chain checks at graduation (filter v1 without dev-sell and activity checks) · the price falls 30–75 % from its
 post-graduation high (deeper = dead) · bounces ≥ 20 % off the low · pulls back 10 % from that bounce high without
-breaking the low → buy · market cap ≤ $100k · TP = SL (1:1) at 25 / 35 / 50 % · max hold 4 h.
+breaking the low → buy · market cap ≤ $100k · coin at most 6 h old (the trader uses Fomo's Graduated tab: coins
+created in the last 24 h that graduated; Fomo's help center lists no safety exclusion for that tab, only warning
+labels, so no extra filter is needed for it) · TP = SL (1:1) at 25 / 35 / 50 % · max hold 4 h.
 ```bash
 ./venv/bin/python sweden/grad_replay.py                      # the rules above
 ./venv/bin/python sweden/grad_replay.py --nofilter           # without the on-chain checks
@@ -115,7 +117,7 @@ breaking the low → buy · market cap ≤ $100k · TP = SL (1:1) at 25 / 35 / 5
 ./venv/bin/python sweden/grad_replay.py --dd-min 0.4 --bounce 0.3 --pullback 0.15 --tp 0.3 --max-mcap-usd 50000
 ```
 The human part of the strategy (is the meme good, does it have followers) is not in the data, so the replay tests
-whether the price pattern plus the on-chain checks has an edge by itself. A coin needs WINDOW + HORIZON (6 h by
+whether the price pattern plus the on-chain checks has an edge by itself. A coin needs WINDOW + HORIZON (10 h by
 default) of PumpSwap data after its graduation. Roughly 400–500 coins graduate a day (most of them normal coins);
 how many of them pass the checks and form the pattern decides how long it takes to get a meaningful sample.
 
