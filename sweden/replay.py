@@ -65,18 +65,24 @@ def load():
                 t_max = ts if t_max is None else max(t_max, ts)
                 order += 1
                 if kind == "C":
-                    _, _, _, ts, mint, creator, signer, name, sym, uri, vsol, vtok, quote, flag = r
+                    _, _, _, ts, mint, creator, signer, name, sym, uri, vsol, vtok, quote, flag = r[:14]
                     coins[mint] = dict(mint=mint, slot=slot, ts=ts, creator=creator, signer=signer, name=name,
-                                       sym=sym, quote=quote, flag=flag, vsol0=vsol, vtok0=vtok, ev=[], grad=None)
+                                       sym=sym, quote=quote, flag=flag, vsol0=vsol, vtok0=vtok, ev=[], grad=None,
+                                       pool=None, sw=[])
                 elif mint in coins:
                     if kind == "T":
                         coins[mint]["ev"].append((slot, order, r))
                     elif kind == "G":
                         coins[mint]["grad"] = slot
+                    elif kind == "P":                # PumpSwap pool created at migration
+                        coins[mint]["pool"] = r
+                    elif kind == "S":                # PumpSwap swap after graduation
+                        coins[mint]["sw"].append((slot, order, r))
         except (EOFError, OSError, zlib.error):
             continue                                 # file still being written / damaged tail
     for c in coins.values():
         chain(c)
+        c["sw"].sort(key=lambda e: (e[0], e[1]))
     gaps = []
     gp = os.path.join(DATA, "gaps.jsonl")
     if os.path.exists(gp):

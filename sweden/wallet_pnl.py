@@ -7,7 +7,7 @@ entry market cap, holding time.
 
 Usage:  python3 sweden/wallet_pnl.py [--kind normal|mayhem] [--min-coins 30] [--top 15] [--wallet <address>]
 """
-import argparse, collections, glob, gzip, json, os, statistics as st
+import argparse, collections, glob, gzip, json, os, statistics as st, zlib
 
 DATA = os.environ.get("SWEDEN_DATA", os.path.join(os.path.dirname(__file__), "..", "data"))
 SLOT_S = 0.4
@@ -46,7 +46,7 @@ def load(kind):
                     p["cost"] += sol / 1e9 * (1 + fee); p["tok"] += tok
                 else:
                     p["back"] += sol / 1e9 * (1 - fee); p["tok"] -= tok
-        except (EOFError, OSError):
+        except (EOFError, OSError, zlib.error):
             continue                                 # file still being written
     return coins, pos
 

@@ -16,7 +16,8 @@ if its edge survives the delay of a copier (we see its trade, then trade ourselv
 take-profit or stop-loss, how often is +X % reached before −Y %?
 
 **Why record raw data instead of the filter's verdict:** the collector stores every pump.fun launch and every
-trade of those coins (wallet, slot, SOL, tokens, curve reserves, fees). The replay then runs *any* filter version,
+trade of those coins (wallet, slot, SOL, tokens, curve reserves, fees) and, since 19 Nov 2026 12:20, their trades
+on PumpSwap after graduation (pool reserves, fees, user). The replay then runs *any* filter version,
 any approval delay (latency), any TP / SL on the same days of data in seconds. Only off-chain checks (RugCheck,
 socials, images) and the real latency of the live setup need a forward test later.
 
@@ -36,15 +37,19 @@ pump.fun transactions from the chain. Only start the collector if the combined c
 In the cloud sandbox this was built in, the free feed delivered only **65–69 %** (all connections stall together
 for several seconds, then disconnect). That may be the sandbox's network proxy; a direct home connection may be
 much better. If the Pi is also low, the fix is a better feed (free Helius key or PumpPortal), not more connections.
-Let it run for a few days. `./stop.sh` stops it; restarting continues where it was.
+Let it run for a few days. `./stop.sh` stops it cleanly; restarting continues where it was (a restart within the
+same hour writes a new `events-HH-<run>.jsonl.gz` file). Always stop with `./stop.sh`: a collector that is killed
+leaves its hour file cut off; `python3 sweden/repair_gz.py` recovers such files (originals kept in `data/broken/`).
 Autostart after reboot: `crontab -e`, add `@reboot sleep 30 && /home/<user>/sweden/start.sh`.
 
 **Resources:**
 * About 250 MB of disk a day.
-* Network: the free endpoint sends every pump.fun transaction, including the ~70 % that fail, so the download is
-  large: about 2 MB/s before websocket compression on 4 connections. If your internet has a data cap, use 2
-  connections: `SWEDEN_WS=wss://api.mainnet-beta.solana.com,wss://api.mainnet-beta.solana.com ./start.sh`
-  (check the coverage with `check_feed.py` first).
+* Network: the free endpoint sends every pump.fun and every PumpSwap transaction, including the many that fail,
+  so the download is large: about 1 MB/s after websocket compression on 4 curve + 2 PumpSwap connections (about
+  90 GB a month). If your internet has a data cap, use fewer connections, e.g.
+  `SWEDEN_WS=wss://api.mainnet-beta.solana.com,wss://api.mainnet-beta.solana.com SWEDEN_WS_SWAP= ./start.sh`
+  (check the coverage with `check_feed.py` first; 2 curve connections, no PumpSwap; more reconnect gaps, and the replay excludes coins trading during a gap).
+* PumpSwap has its own connections: on a shared socket the free endpoint dropped more than half of the launches.
 * No API key, no account, no cost.
 
 ### Analysing
@@ -97,6 +102,22 @@ TP / SL are measured on what selling our tokens would return, so +50 % means +50
 * Order inside one slot follows arrival order from the stream.
 * Not checked: wallet funding links, fresh-wallet share, socials, images. These can be added from the chain later
   because the wallets are recorded.
+
+### Post-graduation dip strategy (`sweden/grad_replay.py`)
+A manual trader's rules for freshly graduated coins, as a replay on the recorded PumpSwap trades:
+on-chain checks at graduation (filter v1 without dev-sell and activity checks) · the price falls 30–75 % from its
+post-graduation high (deeper = dead) · bounces ≥ 20 % off the low · pulls back 10 % from that bounce high without
+breaking the low → buy · market cap ≤ $100k · TP = SL (1:1) at 25 / 35 / 50 % · max hold 4 h.
+```bash
+./venv/bin/python sweden/grad_replay.py                      # the rules above
+./venv/bin/python sweden/grad_replay.py --nofilter           # without the on-chain checks
+./venv/bin/python sweden/grad_replay.py --at 60              # baseline: buy every graduate 60 s after graduation
+./venv/bin/python sweden/grad_replay.py --dd-min 0.4 --bounce 0.3 --pullback 0.15 --tp 0.3 --max-mcap-usd 50000
+```
+The human part of the strategy (is the meme good, does it have followers) is not in the data, so the replay tests
+whether the price pattern plus the on-chain checks has an edge by itself. A coin needs WINDOW + HORIZON (6 h by
+default) of PumpSwap data after its graduation. Roughly 400–500 coins graduate a day (most of them normal coins);
+how many of them pass the checks and form the pattern decides how long it takes to get a meaningful sample.
 
 ### First results (18–19 Nov 2026, about 14 h of data, 0.5 SOL, 2 s latency, after fees)
 * **Normal coins, blind buy at 30 s:** 5 % reach +50 %, 96 % stop trading (10 min without a trade) first. Every
