@@ -13,9 +13,13 @@ Realism built in:
   * every coin's trades must form an unbroken chain (the curve's token reserve moves by exactly each trade's
     amount); a coin with a missing trade inside its window is excluded, so is one launched too close to the end
     of the data to be complete.
+  * normal and Mayhem coins (create flag 1: a fee-free pump.fun agent wallet trades them and moves the curve in
+    jumps) are separate games and are replayed separately (--kind). Mayhem results are NOT reliable: other
+    traders' fills there deviate -30 % / +40 % (p10 / p90) from the curve formula, so our simulated fills are rough.
 
-Usage:  python3 sweden/replay.py [--size 0.5] [--lat 5] [--min-age 30] [--max-age 180] [--horizon 7200]
-                                 [--nofilter] [--set dev_pct=0.05 ...]
+Usage:  python3 sweden/replay.py [--kind normal|mayhem] [--size 0.5] [--lat 5] [--min-age 30] [--max-age 180]
+                                 [--horizon 7200] [--nofilter] [--set dev_pct=0.05 ...]
+                                 [--dip 0.5 --min-peak 1.0 --rebound 0.1]   (buy-the-dip entry)
 """
 import argparse, bisect, collections, glob, gzip, itertools, json, os, statistics as st, sys, zlib
 
@@ -23,10 +27,12 @@ DATA = os.environ.get("SWEDEN_DATA", os.path.join(os.path.dirname(__file__), "..
 SUPPLY = 1e15                    # raw token units (1e9 tokens, 6 decimals)
 SLOT_S = 0.4
 
-# Filter v0: the user's criteria with first-guess thresholds. The data decides the real thresholds later.
+# Filter v1: the user's criteria with first-guess thresholds; v1 replaces "dev has not sold" (v0) with the two
+# dev-sell checks below. The data decides the real thresholds later.
 FILTER = dict(
     dev_pct=0.05,          # creator wallet(s) hold at most 5 % of supply
-    dev_sold=False,        # creator has not sold anything
+    dev_sell_fast_s=1.0,   # dev did not sell within 1 s of launch (launch-slot dump: 99 % of those coins die)
+    dev_sold_max=0.99,     # dev sold less than 99 % of what it bought (a partial dev sell is fine: data 19 Nov)
     bundle_pct=0.10,       # wallets that bought in the launch slot hold at most 10 %
     sniper_pct=0.15,       # wallets whose first buy came 1-3 slots after launch hold at most 15 %
     top10_pct=0.30,        # top 10 holders (curve excluded) hold at most 30 %
@@ -116,23 +122,33 @@ class State:
         self.ntr = collections.Counter()
         self.buy_sizes = collections.Counter()
         self.n_buys = self.n_sells = 0
-        self.dev_sold = False
+        self.dev_bought = self.dev_sold_tok = 0
+        self.dev_first_sell = None               # slot of the dev's first sell
         self.fee = 0.0125
         self.devs = {c["creator"], c["signer"]}
+        self.peak = self.low = c["vsol0"] / c["vtok0"]   # highest price so far / lowest price since the peak
 
     def apply(self, slot, r):
         _, _, _, ts, mint, user, buy, sol, tok, vsol, vtok, fee_bps, cfee_bps, ix = r
         self.vsol, self.vtok = vsol, vtok
+        px = vsol / vtok
+        if px > self.peak:
+            self.peak = self.low = px
+        self.low = min(self.low, px)
         self.fee = max(self.fee, (fee_bps + cfee_bps) / 1e4)
         self.ntr[user] += 1
         if buy:
             self.hold[user] += tok; self.n_buys += 1
             self.first_buy_slot.setdefault(user, slot)
             self.buy_sizes[round(sol / 1e9, 3)] += 1
+            if user in self.devs:
+                self.dev_bought += tok
         else:
             self.hold[user] -= tok; self.n_sells += 1
             if user in self.devs:
-                self.dev_sold = True
+                self.dev_sold_tok += tok
+                if self.dev_first_sell is None:
+                    self.dev_first_sell = slot
 
     def features(self):
         L = self.c["slot"]
@@ -142,7 +158,9 @@ class State:
         dup = sum(n for n in self.buy_sizes.values() if n > 1)
         return dict(
             dev_pct=sum(held.get(d, 0) for d in self.devs) / SUPPLY,
-            dev_sold=self.dev_sold,
+            dev_sold=self.dev_first_sell is not None,
+            dev_sell_s=(self.dev_first_sell - L) * SLOT_S if self.dev_first_sell is not None else None,
+            dev_sold_frac=self.dev_sold_tok / self.dev_bought if self.dev_bought else float(self.dev_sold_tok > 0),
             bundle_pct=sum(t for w, t in held.items() if self.first_buy_slot.get(w) == L) / SUPPLY,
             sniper_pct=sum(t for w, t in held.items() if 0 < self.first_buy_slot.get(w, -99) - L <= 3) / SUPPLY,
             top10_pct=top10 / SUPPLY,
@@ -159,7 +177,8 @@ def failed(f, F):
     """Names of the criteria a feature set fails."""
     out = []
     if f["dev_pct"] > F["dev_pct"]: out.append("dev holds too much")
-    if f["dev_sold"] and not F["dev_sold"]: out.append("dev sold")
+    if f["dev_sell_s"] is not None and f["dev_sell_s"] < F["dev_sell_fast_s"]: out.append("dev sold at launch")
+    if f["dev_sold_frac"] >= F["dev_sold_max"]: out.append("dev sold everything")
     if f["bundle_pct"] > F["bundle_pct"]: out.append("bundle")
     if f["sniper_pct"] > F["sniper_pct"]: out.append("snipers")
     if f["top10_pct"] > F["top10_pct"]: out.append("top10 concentration")
@@ -174,13 +193,24 @@ def failed(f, F):
 
 
 def passes(f, F):
-    return (f["dev_pct"] <= F["dev_pct"] and (F["dev_sold"] or not f["dev_sold"])
+    return (f["dev_pct"] <= F["dev_pct"]
+            and (f["dev_sell_s"] is None or f["dev_sell_s"] >= F["dev_sell_fast_s"])
+            and f["dev_sold_frac"] < F["dev_sold_max"]
             and f["bundle_pct"] <= F["bundle_pct"] and f["sniper_pct"] <= F["sniper_pct"]
             and f["top10_pct"] <= F["top10_pct"] and f["traders"] >= F["min_traders"]
             and f["buys"] >= F["min_buys"] and f["top3_trade_share"] <= F["top3_trade_share"]
             and f["same_size_share"] <= F["same_size_share"]
             and f["prior_launches"] <= F["max_prior_launches"] and (F["copy"] or not f["copy"])
             and f["netflow"] >= F["min_netflow"])
+
+
+def dip_ok(S, c, a):
+    """Buy-the-dip signal: the coin first rose MIN_PEAK above its launch price, then fell DIP from that peak,
+    and (if REBOUND > 0) has since bounced REBOUND off its low."""
+    px = S.vsol / S.vtok
+    if S.peak < c["vsol0"] / c["vtok0"] * (1 + a.min_peak) or S.low > S.peak * (1 - a.dip):
+        return False
+    return px >= S.low * (1 + a.rebound) if a.rebound > 0 else px <= S.peak * (1 - a.dip)
 
 
 def buy_tokens(vsol, vtok, sol, fee):
@@ -201,7 +231,8 @@ def simulate(c, a, F):
     ev = c["ev"]
     L = c["slot"]
     lo, hi = L + int(a.min_age / SLOT_S), L + int(a.max_age / SLOT_S)
-    ok = (lambda f: True) if a.nofilter else (lambda f: passes(f, F))
+    flt = (lambda f: True) if a.nofilter else (lambda f: passes(f, F))
+    ok = flt if a.dip is None else (lambda f: dip_ok(S, c, a) and flt(f))
     grad_slot = c["grad"]
     i = 0
     while i < len(ev) and ev[i][0] < lo:                 # everything before the window opens
@@ -221,7 +252,10 @@ def simulate(c, a, F):
         if ok(f):
             approve_slot, feat = ev[i - 1][0], f
     if approve_slot is None:
-        return {"rejected": failed(S.features(), F) if S.n_buys else ["no buys"]}
+        if not S.n_buys:
+            return {"rejected": ["no buys"]}
+        why = [] if a.nofilter else failed(S.features(), F)
+        return {"rejected": why or ["no dip signal"]}
     entry_slot = approve_slot + a.lat
     while i < len(ev) and ev[i][0] < entry_slot:
         S.apply(ev[i][0], ev[i][2]); i += 1
@@ -276,6 +310,11 @@ def main():
     ap.add_argument("--horizon", type=float, default=7200, help="max hold in seconds")
     ap.add_argument("--nofilter", action="store_true", help="buy every coin at min-age (baseline)")
     ap.add_argument("--set", nargs="*", default=[], help="override filter values, e.g. dev_pct=0.1")
+    ap.add_argument("--kind", choices=["normal", "mayhem"], default="normal",
+                    help="normal coins, or Mayhem coins (agent-traded, simulated fills unreliable)")
+    ap.add_argument("--dip", type=float, help="buy the dip: enter once the price fell this fraction from its peak")
+    ap.add_argument("--min-peak", type=float, default=0.0, help="with --dip: peak must be this far above launch price")
+    ap.add_argument("--rebound", type=float, default=0.0, help="with --dip: wait until price bounced this far off the low")
     a = ap.parse_args()
     F = dict(FILTER)
     for kv in a.set:
@@ -291,6 +330,8 @@ def main():
     for c in coins.values():
         if c["quote"]:
             excl["quoted in another token"] += 1; continue
+        if bool(c["flag"]) != (a.kind == "mayhem"):
+            excl["other kind (normal / mayhem)"] += 1; continue
         if c["ts"] + need > t1:
             excl["too recent (window not complete)"] += 1; continue
         if c["broken"] is not None and c["broken"] <= c["slot"] + need / SLOT_S:
@@ -300,8 +341,14 @@ def main():
     print(f"data completeness: {sum(c['broken'] is None for c in sol) / max(1, len(sol)):.0%} of SOL coins have an "
           f"unbroken trade chain (needs to be high, see check_feed.py)")
     print(f"data {((t1 - t0) / 3600):.1f} h | launches {len(coins)} | usable {len(usable)} | excluded {dict(excl)}")
-    print(f"mode: {'NO FILTER (buy every coin at ' + str(a.min_age) + ' s)' if a.nofilter else 'filter v0'} | "
+    mode = 'filter v1' if not a.nofilter else 'NO FILTER' if a.dip is not None else \
+        'NO FILTER (buy every coin at ' + str(a.min_age) + ' s)'
+    if a.dip is not None:
+        mode += f" + dip {a.dip:.0%} from a peak >= +{a.min_peak:.0%}" + (f", rebound {a.rebound:.0%}" if a.rebound else "")
+    print(f"{a.kind} coins | mode: {mode} | "
           f"size {a.size} SOL | latency {a.lat} slots ({a.lat * SLOT_S:.1f} s) | horizon {a.horizon / 60:.0f} min")
+    if a.kind == "mayhem":
+        print("WARNING: Mayhem fills are rough (the agent moves the curve in jumps) - treat results as indicative only")
     sims = [simulate(c, a, F) for c in usable]
     res = [p for p in sims if p and "rejected" not in p]
     why = collections.Counter(r for p in sims if p and "rejected" in p for r in p["rejected"])

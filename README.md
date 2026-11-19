@@ -49,17 +49,37 @@ Autostart after reboot: `crontab -e`, add `@reboot sleep 30 && /home/<user>/swed
 
 ### Analysing
 ```bash
-./venv/bin/python sweden/replay.py --nofilter          # baseline: buy every coin 30 s after launch
-./venv/bin/python sweden/replay.py                     # filter v0 (approval window 30 s – 3 min)
+./venv/bin/python sweden/replay.py --nofilter          # baseline: buy every normal coin 30 s after launch
+./venv/bin/python sweden/replay.py                     # filter v1 (approval window 30 s – 3 min)
+./venv/bin/python sweden/replay.py --kind mayhem --nofilter   # Mayhem coins (indicative only, see below)
 ./venv/bin/python sweden/replay.py --lat 10 --size 1 --set dev_pct=0.1 min_netflow=5
+# buy the dip: coin first rises 100 % above launch, falls 50 % from that peak, then bounces 10 % off the low
+./venv/bin/python sweden/replay.py --nofilter --dip 0.5 --min-peak 1.0 --rebound 0.1 --max-age 600
+./venv/bin/python sweden/wallet_pnl.py --kind mayhem   # which wallets really make money (their own fills)
+./venv/bin/python sweden/wallet_pnl.py --wallet <address>     # one wallet's trades coin by coin
 ```
 Prints: how many coins the filter approves and why the others were rejected, a table of how often +X % is reached
 before −Y % (after fees, our size and latency), and fixed TP / SL results.
 
-**Filter v0** (`FILTER` in `sweden/replay.py`, first-guess thresholds — the data decides the real ones):
-dev holds ≤ 5 % and has not sold · launch-slot bundle ≤ 10 % · snipers (first buy 1–3 slots after launch) ≤ 15 % ·
-top-10 holders ≤ 30 % · ≥ 15 traders, ≥ 20 buys · top-3 wallets ≤ 40 % of trades · ≤ 30 % of buys with identical
-size · creator launched ≤ 2 other coins in 24 h · name/ticker not used in the previous 72 h · ≥ 3 SOL net inflow.
+**Two kinds of coin.** About 60 % of SOL-quoted launches carry create flag 1 (“Mayhem” coins): a fee-free
+pump.fun agent wallet (`BwWK17…`) trades every one of them and moves the curve in jumps of ±50 % within seconds.
+They behave completely differently from normal coins (32 % reach +50 % vs 5 %), so the replay runs one kind at a
+time (`--kind`, default `normal`). On Mayhem coins other traders' fills deviate −30 % / +40 % (p10 / p90) from the
+curve formula, so the replay's fills there are rough; use `wallet_pnl.py` (real fills) to judge Mayhem strategies.
+
+**Filter v1** (`FILTER` in `sweden/replay.py`, first-guess thresholds — the data decides the real ones):
+dev holds ≤ 5 % · dev did not sell within 1 s of launch and has not sold ≥ 99 % of what it bought · launch-slot
+bundle ≤ 10 % · snipers (first buy 1–3 slots after launch) ≤ 15 % · top-10 holders ≤ 30 % · ≥ 15 traders,
+≥ 20 buys · top-3 wallets ≤ 40 % of trades · ≤ 30 % of buys with identical size · creator launched ≤ 2 other coins
+in 24 h · name/ticker not used in the previous 72 h · ≥ 3 SOL net inflow.
+v0 rejected every coin whose dev had sold anything. In the data of 18–19 Nov a partial dev sell went with *more*
+activity (15–17 % of those coins reach +50 % vs 4 % when the dev had not sold); only a launch-slot dev sell
+(0.6 % reach +50 %) or a full dev exit (6 %) is a bad sign.
+
+**`wallet_pnl.py`** computes every wallet's PnL from its own fills in the collected data (fees and 0.0015 SOL per
+transaction included; tokens still held are valued at what selling them on the last curve would return, so dead
+bags count as losses). It lists the most profitable wallets with their typical size, entry age, entry market cap
+and holding time: the starting point for studying (and copy-testing, module 1) the bots that win.
 
 **Data check:** every coin's trades must form an unbroken chain (the curve's token reserve moves by exactly the
 traded amount). A coin with a missing trade in its window is excluded and the share of complete coins is printed
@@ -70,11 +90,27 @@ our own buy and sell move the curve; pump.fun fee + creator fee on both sides; 0
 TP / SL are measured on what selling our tokens would return, so +50 % means +50 % in the pocket.
 
 **Known limits:**
-* Only SOL-quoted coins (about two thirds of launches) are analysed.
+* Only SOL-quoted coins (about three quarters of launches) are analysed; the other quote token's amounts are not
+  decoded (their trade events carry 0 SOL).
+* Mayhem coins: simulated fills are rough (see above).
 * A position still open at graduation is valued at the last curve price; trading after graduation is not recorded.
 * Order inside one slot follows arrival order from the stream.
 * Not checked: wallet funding links, fresh-wallet share, socials, images. These can be added from the chain later
   because the wallets are recorded.
+
+### First results (18–19 Nov 2026, about 14 h of data, 0.5 SOL, 2 s latency, after fees)
+* **Normal coins, blind buy at 30 s:** 5 % reach +50 %, 96 % stop trading (10 min without a trade) first. Every
+  TP / SL / time-stop combination loses (best about −3 % per trade).
+* **Filter v0** raises the +50 % rate to about 21 % but approves only ~25 coins and still loses.
+* **Entry-rule search** (~1,000 single and paired conditions at 15–120 s, picked on the first 60 % of the data,
+  checked on the last 40 %): on normal coins nothing that wins on the first part also wins on the second.
+* **Buy the dip** (coin rises +30 / +100 / +200 %, falls 30 / 50 / 70 % from the peak, optionally bounces 10 / 25 %
+  off the low, entry 30 s – 10 min after launch): 42 normal-coin setups, none positive on both parts of the data
+  (the best, "+200 % peak, −50 % dip", is −4.9 % then +2.0 % per trade with the fixed exit, n = 182 / 51).
+  Mayhem: 3 of 54 setups are positive on both parts with their best exit, as expected from chance.
+* **Real wallets, Mayhem coins:** with unsold bags counted, only 75 of the 223 active wallets are profitable and
+  the wallets together lose. Many of the top wallets in both kinds buy in the launch slot itself (entry 0 s,
+  identical sizes), i.e. they are the deployers, profiting from the buyers who come after.
 
 ## Module 1 — `sweden/wallet_scan.py` (free data only)
 
