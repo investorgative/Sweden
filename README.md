@@ -135,6 +135,28 @@ how many of them pass the checks and form the pattern decides how long it takes 
   the wallets together lose. Many of the top wallets in both kinds buy in the launch slot itself (entry 0 s,
   identical sizes), i.e. they are the deployers, profiting from the buyers who come after.
 
+## Terminal — live screen of graduated coins (`./terminal.sh`)
+
+A page for manual trading: it shows only pump.fun coins that graduated to a SOL pool on PumpSwap, are at most 6 h
+old, pass the on-chain checks, are at most $100k market cap and have dropped at least 10 % from their top (so a
+coin never shows while it pumps). Mayhem coins are hidden (`--mayhem` shows them). It reads the collector's files,
+so the collector must be running. No chart and no trading in the page: each coin has a big **Copy CA** button
+(tapping the name or picture copies too), and the newest alert stays pinned at the top with its own Copy CA button.
+
+```bash
+echo '<your passkey>' > terminal_passkey && chmod 600 terminal_passkey   # optional, at least 6 characters
+./terminal.sh        # tmux session "SwedenTerminal": terminal on port 8750 + Cloudflare quick tunnel
+```
+
+* Opens from anywhere (mobile data too) via the `https://….trycloudflare.com` link printed at the end; the link
+  changes whenever `./terminal.sh` runs again (`grep trycloudflare logs/tunnel.log | tail -1`). At home also
+  `http://<pi-ip>:8750`.
+* The page asks for the passkey from `terminal_passkey` (or `SWEDEN_PASSKEY`); without one, the first start
+  generates 8 digits into that file (`cat terminal_passkey`). Stays logged in for 30 days per browser; changing
+  the passkey and restarting logs everyone out. Wrong passkeys lock the address out (5 tries, then 1, 5, 15, 60 min).
+* Alerts: tap "Enable sound" on the page; push to the phone with `SWEDEN_NTFY_TOPIC=<secret topic> ./terminal.sh`
+  and the ntfy app.
+
 ## Module 1 — `sweden/wallet_scan.py` (free data only)
 
 For a wallet it reads the most recent N transactions from **free public Solana RPC** (no API key, no credits),
