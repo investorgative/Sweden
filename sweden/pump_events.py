@@ -12,6 +12,8 @@ import base64, hashlib, re, struct
 PUMP = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
 AMM = "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"     # PumpSwap, where coins trade after graduation
 WSOL = "So11111111111111111111111111111111111111112"
+NO_CREATOR = "11111111111111111111111111111111"   # coin creator of a PumpSwap pool that was not made by a pump.fun
+                                                  # migration (anyone can open a pool for any token)
 _A = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 _INV = re.compile(r"Program (\w+) invoke \[\d+\]")
 _FIN = re.compile(r"Program (\w+) (success|failed)")

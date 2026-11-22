@@ -23,6 +23,7 @@ Usage:  python3 sweden/replay.py [--kind normal|mayhem] [--size 0.5] [--lat 5] [
 """
 import argparse, bisect, collections, glob, gzip, itertools, json, os, statistics as st, sys, zlib
 
+NO_CREATOR = "11111111111111111111111111111111"   # pool opened by hand, not by a migration (see pump_events.py)
 DATA = os.environ.get("SWEDEN_DATA", os.path.join(os.path.dirname(__file__), "..", "data"))
 SUPPLY = 1e15                    # raw token units (1e9 tokens, 6 decimals)
 SLOT_S = 0.4
@@ -74,7 +75,7 @@ def load():
                         coins[mint]["ev"].append((slot, order, r))
                     elif kind == "G":
                         coins[mint]["grad"] = slot
-                    elif kind == "P":                # PumpSwap pool created at migration
+                    elif kind == "P" and r[9] != NO_CREATOR:   # PumpSwap pool created at migration
                         coins[mint]["pool"] = r
                     elif kind == "S":                # PumpSwap swap after graduation
                         coins[mint]["sw"].append((slot, order, r))

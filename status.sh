@@ -2,7 +2,7 @@
 # Shows what the collector has gathered so far.
 cd "$(dirname "$0")"
 PY=./venv/bin/python; [ -x "$PY" ] || PY=python3
-tmux has-session -t Sweden 2>/dev/null && echo "collector: RUNNING" || echo "collector: NOT running (./start.sh)"
+tmux has-session -t =Sweden 2>/dev/null && echo "collector: RUNNING" || echo "collector: NOT running (./start.sh)"
 "$PY" - <<'PY'
 import json, os, time
 p = "data/status.json"

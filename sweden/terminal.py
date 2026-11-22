@@ -253,8 +253,14 @@ class Terminal:
                 c.S = None                          # free the per-wallet state
             c.grad_ts = r[3]
         elif kind == "P":
+            if r[9] == R.NO_CREATOR:                # a pool opened by hand, not the migration (fake graduation)
+                return
             c.pool_ok = r[6] == WSOL
             c.grad_ts = c.grad_ts or r[3]
+            if c.S is not None:                     # graduation event missed by the feed: run the checks now
+                c.feat = c.S.features()
+                c.fails = [x for x in R.failed(c.feat, dict(R.FILTER, bundle_pct=self.a.bundle_max)) if x not in SKIP]
+                c.S = None
             if c.pool_ok:
                 self.meta_q.put(c)
         elif kind == "S" and c.pool_ok:
@@ -315,6 +321,8 @@ class Terminal:
             return False, "older than max age"
         if c.flag and not self.a.mayhem:
             return False, "Mayhem coin (pool of a few SOL, start with --mayhem to show)"
+        if c.fails is None:
+            return False, "on-chain checks missing"
         if c.fails:
             return False, "filter: " + ", ".join(c.fails)
         if self.usd and self.mcap_usd(c) > self.a.max_mcap_usd:

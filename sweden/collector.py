@@ -10,7 +10,8 @@ Stores raw events (not verdicts), so any filter / entry delay / TP / SL can be r
 
 Only trades of coins whose launch was seen by this collector are stored (that is what the research needs and
 keeps the files small). PumpSwap pools are mapped to their coin by the pool-creation event at migration
-(data/pools.tsv); swap records carry the coin's mint in place of the pool.
+(data/pools.tsv); swap records carry the coin's mint in place of the pool. Pools anyone opens by hand (no coin
+creator set) are ignored, so are their swaps.
 Four overlapping websocket connections are used because the free endpoint drops a
 connection every 15-30 s; 4 staggered connections leave almost no gap; events are de-duplicated by transaction
 signature. PumpSwap carries about three times the traffic of the curve and gets its own connections (sharing a
@@ -25,7 +26,7 @@ import asyncio, collections, gzip, json, os, signal, sys, time
 
 sys.path.insert(0, os.path.dirname(__file__))
 import websockets
-from pump_events import AMM, PUMP, decode, pump_data_lines
+from pump_events import AMM, NO_CREATOR, PUMP, decode, pump_data_lines
 
 ENDPOINTS = [e.strip() for e in os.environ.get(
     "SWEDEN_WS", ",".join(["wss://api.mainnet-beta.solana.com"] * 4)).split(",") if e.strip()]
@@ -96,6 +97,8 @@ class Store:
         elif mint not in self.mints:
             return False
         if kind == "P":
+            if rec[7] == NO_CREATOR:                     # a pool someone opened by hand, not the migration: its
+                return False                             # swaps would give the coin a fake price
             self.pools[rec[3]] = mint
             self.pool_file.write(f"{rec[3]}\t{mint}\n")
         self._file().write(json.dumps([slot, sig[:8]] + rec, separators=(",", ":")) + "\n")

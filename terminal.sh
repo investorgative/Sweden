@@ -10,7 +10,7 @@ DIR="$(pwd)"
 PY="$DIR/venv/bin/python"
 [ -x "$PY" ] || { echo "venv missing - run ./setup.sh first"; exit 1; }
 mkdir -p "$DIR/logs"
-tmux kill-session -t SwedenTerminal 2>/dev/null
+tmux kill-session -t =SwedenTerminal 2>/dev/null
 : > logs/tunnel.log
 tmux new-session -d -s SwedenTerminal "cd '$DIR' && while true; do SWEDEN_NTFY_TOPIC='${SWEDEN_NTFY_TOPIC:-}' '$PY' -u sweden/terminal.py $* 2>&1 | tee -a logs/terminal.log; echo 'terminal exited - restarting in 10s'; sleep 10; done"
 tmux new-window -t SwedenTerminal "cd '$DIR' && while true; do cloudflared tunnel --no-autoupdate --url http://localhost:8750 2>&1 | tee -a logs/tunnel.log; sleep 10; done"
