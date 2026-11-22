@@ -209,7 +209,7 @@ class Terminal:
         elif kind == "G":
             if c.S is not None:
                 c.feat = c.S.features()
-                c.fails = [x for x in R.failed(c.feat, R.FILTER) if x not in SKIP]
+                c.fails = [x for x in R.failed(c.feat, dict(R.FILTER, bundle_pct=self.a.bundle_max)) if x not in SKIP]
                 c.S = None                          # free the per-wallet state
             c.grad_ts = r[3]
         elif kind == "P":
@@ -382,7 +382,7 @@ class Terminal:
                     meta=c.meta or {}))
             alerts = list(self.alerts)
         return dict(now=now, live=self.live, sol_usd=self.usd, coins=out, alerts=alerts,
-                    settings=dict(max_age_h=self.a.max_age / 3600, max_mcap_usd=self.a.max_mcap_usd,
+                    settings=dict(max_age_h=self.a.max_age / 3600, max_mcap_usd=self.a.max_mcap_usd, bundle_max=self.a.bundle_max,
                                   show_dd=self.a.show_dd, dd_min=self.a.dd_min, dd_max=self.a.dd_max,
                                   bounce=self.a.bounce, pullback=self.a.pullback))
 
@@ -447,6 +447,8 @@ def main():
     ap.add_argument("--dd-max", type=float, default=0.75)
     ap.add_argument("--bounce", type=float, default=0.20)
     ap.add_argument("--pullback", type=float, default=0.10)
+    ap.add_argument("--bundle-max", type=float, default=0.15,
+                    help="hide a coin if launch-slot buyers still held more than this share at graduation")
     ap.add_argument("--mayhem", action="store_true", help="also show Mayhem coins (they graduate into tiny pools)")
     a = ap.parse_args()
     t = Terminal(a)

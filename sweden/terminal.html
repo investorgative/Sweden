@@ -176,7 +176,7 @@ function card(c) {
 function render() {
   if (!state) return;
   const s = state.settings;
-  $("#rules").textContent = `Graduated pump.fun coins ≤ ${s.max_age_h} h old, passing the on-chain checks, mcap ≤ $${(s.max_mcap_usd / 1000).toFixed(0)}k, at least ${pct(s.show_dd)} below their top. ` +
+  $("#rules").textContent = `Graduated pump.fun coins ≤ ${s.max_age_h} h old, passing the on-chain checks (bundle ≤ ${pct(s.bundle_max)}), mcap ≤ $${(s.max_mcap_usd / 1000).toFixed(0)}k, at least ${pct(s.show_dd)} below their top. ` +
     `Zone ${pct(s.dd_min)}–${pct(s.dd_max)} down · bounce +${pct(s.bounce)} off the low · entry after a ${pct(s.pullback)} pullback. SOL $${state.sol_usd.toFixed(0)}.`;
   let cs = state.coins.filter((c) => filter === "all" || c.stage === filter);
   cs.sort((a, b) => (b.visible - a.visible) || (ORDER[a.stage] - ORDER[b.stage]) || (a.age_min - b.age_min));
