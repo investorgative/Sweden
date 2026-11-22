@@ -35,8 +35,10 @@ from grad_replay import SKIP, WSOL, sol_usd
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 HISTORY_S = 72 * 3600                    # creator history (24 h) and copied names (72 h) need this much data
+AXIOM_FILE = os.path.join(R.DATA, "axiom_checks.jsonl")
 PASSKEY_FILE = os.path.join(HERE, "..", "terminal_passkey")
 TOKEN_DAYS = 30
+AXIOM_FIELDS = ("top10", "dev", "snipers", "insiders", "bundlers", "holders")
 LOCKOUT = {5: 60, 6: 300, 7: 900}        # wrong passkeys from one address -> seconds locked (then 1 h each)
 GLOBAL_FAILS = 30                        # wrong passkeys per hour from all addresses together -> lock 15 min
 
@@ -127,6 +129,42 @@ class Tail:
         return parts
 
 
+class Holders:
+    """Live holdings from curve and PumpSwap trades, and the variants of Axiom-style metrics we compare against Axiom
+    (Axiom does not publish its definitions). Token transfers are not in the data: a wallet that got its tokens by
+    transfer is missed, and one that sent them away still counts (until it would sell)."""
+
+    def __init__(self, launch_slot, devs):
+        self.L, self.devs = launch_slot, devs
+        self.hold = collections.Counter()
+        self.first = {}                              # wallet -> slot of its first curve buy
+        self.buyers = collections.defaultdict(set)   # slot -> wallets that bought on the curve in that slot
+
+    def trade(self, slot, user, buy, tok, curve):
+        self.hold[user] += tok if buy else -tok
+        if buy and curve:
+            self.first.setdefault(user, slot)
+            self.buyers[slot].add(user)
+
+    def metrics(self):
+        held = {w: t for w, t in self.hold.items() if t > 0}
+        S, L, first = R.SUPPLY, self.L, self.first
+
+        def share(pred):
+            return sum(t for w, t in held.items() if w in first and pred(w, first[w])) / S
+        return dict(
+            holders=len(held),
+            top10=sum(sorted(held.values(), reverse=True)[:10]) / S,
+            dev=sum(held.get(d, 0) for d in self.devs) / S,
+            bundle_launch=share(lambda w, f: f == L),
+            bundle_launch_nodev=share(lambda w, f: f == L and w not in self.devs),
+            bundle_2=share(lambda w, f: len(self.buyers[f]) >= 2),
+            bundle_4=share(lambda w, f: len(self.buyers[f]) >= 4),
+            snipers_1_3=share(lambda w, f: 0 < f - L <= 3),
+            snipers_0_10=share(lambda w, f: f - L <= 10 and w not in self.devs),
+        )
+
+
 class Coin:
     def __init__(self, r, prior, copy):
         _, _, _, ts, mint, creator, signer, name, sym, uri, vsol, vtok, quote, flag = r[:14]
@@ -135,6 +173,7 @@ class Coin:
         self.c = dict(slot=r[0], creator=creator, signer=signer, vsol0=vsol, vtok0=vtok,
                       prior_launches=prior, copy=copy)
         self.S = R.State(self.c)
+        self.H = Holders(r[0], {creator, signer})
         self.feat, self.fails = None, None
         self.grad_ts, self.pool_ok = None, False
         self.pts = []                               # (ts, price) after graduation
@@ -204,6 +243,7 @@ class Terminal:
         if c is None:
             return
         if kind == "T":
+            c.H.trade(r[0], r[5], r[6], r[8], True)
             if c.S is not None:
                 c.S.apply(r[0], r)
         elif kind == "G":
@@ -218,6 +258,7 @@ class Terminal:
             if c.pool_ok:
                 self.meta_q.put(c)
         elif kind == "S" and c.pool_ok:
+            c.H.trade(r[0], r[5], r[6], r[7], False)
             buy, base, quote, pb, pq, vq = r[6], r[7], r[8], r[9], r[10], r[11]
             B = pb - base if buy else pb + base     # event reserves are pre-trade
             Q = (pq + quote if buy else pq - quote) + vq
@@ -352,6 +393,20 @@ class Terminal:
                     self.tails = {f: t for f, t in self.tails.items() if os.path.exists(f)}
 
     # ---------- API ----------
+    def axiom_check(self, mint, vals):
+        """Store what Axiom shows for a coin next to our live variants at the same moment (data/axiom_checks.jsonl)."""
+        with self.lock:
+            c = self.coins.get(mint)
+            if c is None:
+                return False
+            rec = dict(ts=time.time(), mint=mint, sym=c.sym, mayhem=bool(c.flag), axiom=vals, ours=c.H.metrics(),
+                       at_grad={k: (c.feat or {}).get(k) for k in ("bundle_pct", "sniper_pct", "top10_pct", "dev_pct")},
+                       age_min=(time.time() - c.ts) / 60, mcap_usd=self.mcap_usd(c))
+        with open(AXIOM_FILE, "a") as f:
+            f.write(json.dumps(rec) + "\n")
+        log("axiom check saved", c.sym, vals)
+        return True
+
     def state(self, show_all):
         now = time.time()
         out = []
@@ -379,7 +434,7 @@ class Terminal:
                                 top3_trades=f.get("top3_trade_share"), same_sizes=f.get("same_size_share"),
                                 prior=f.get("prior_launches"), copy=f.get("copy"), dev_sold=f.get("dev_sold"),
                                 traders=f.get("traders")),
-                    meta=c.meta or {}))
+                    live=c.H.metrics(), meta=c.meta or {}))
             alerts = list(self.alerts)
         return dict(now=now, live=self.live, sol_usd=self.usd, coins=out, alerts=alerts,
                     settings=dict(max_age_h=self.a.max_age / 3600, max_mcap_usd=self.a.max_mcap_usd, bundle_max=self.a.bundle_max,
@@ -424,9 +479,20 @@ def serve(t, port):
                 self.send(404, b"not found", "text/plain")
 
         def do_POST(self):
-            if self.path != "/api/login":
+            if self.path not in ("/api/login", "/api/axiom"):
                 return self.send(404, b"not found", "text/plain")
             n = int(self.headers.get("Content-Length") or 0)
+            if self.path == "/api/axiom":
+                if not gate.token_ok(self.headers.get("X-Sweden-Token")):
+                    return self.send(401, b'{"error":"locked"}', "application/json")
+                try:
+                    b = json.loads(self.rfile.read(min(n, 4000)))
+                    vals = {k: float(v) for k, v in b["values"].items()
+                            if k in AXIOM_FIELDS and v not in ("", None)}
+                    ok = bool(vals) and t.axiom_check(str(b["mint"]), vals)
+                except (ValueError, KeyError, TypeError, AttributeError):
+                    ok = False
+                return self.send(200 if ok else 400, json.dumps(dict(ok=ok)).encode(), "application/json")
             try:
                 guess = str(json.loads(self.rfile.read(min(n, 1000)) or b"{}").get("passkey", ""))
             except (ValueError, AttributeError):

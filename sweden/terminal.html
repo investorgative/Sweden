@@ -79,6 +79,18 @@
                  padding: 14px; font-size: 20px; text-align: center; letter-spacing: 3px; }
   #login button { background: var(--accent); color: #0d1117; border: 0; border-radius: 10px; padding: 14px;
                   font-weight: 700; font-size: 16px; }
+  #ax { position: fixed; inset: 0; z-index: 8; background: rgba(0,0,0,.6); display: none; align-items: flex-end;
+        justify-content: center; }
+  #ax.show { display: flex; }
+  #ax form { background: var(--panel); border: 1px solid var(--line); border-radius: 14px 14px 0 0; padding: 16px;
+             width: 100%; max-width: 480px; display: flex; flex-direction: column; gap: 12px; }
+  .axgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .axgrid label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 12px; }
+  .axgrid input { background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 8px;
+                  padding: 10px; font-size: 16px; }
+  .axrow { display: flex; gap: 8px; } .axrow button { flex: 1; padding: 12px; font-weight: 700; }
+  .axrow button[type=submit] { background: var(--accent); color: #0d1117; border: 0; }
+  .axbtn { padding: 2px 8px; font-size: 12px; }
   #toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 9; background: var(--entry);
            color: #0d1117; font-weight: 700; padding: 10px 16px; border-radius: 10px; display: none; }
   #toast.show { display: block; }
@@ -102,6 +114,15 @@
   </div>
 </header>
 <div id="toast"></div>
+<div id="ax"><form id="axform" autocomplete="off">
+  <b id="axtitle"></b>
+  <div class="axgrid">
+    <label>Top 10 %<input name="top10" inputmode="decimal"></label><label>Dev %<input name="dev" inputmode="decimal"></label>
+    <label>Snipers %<input name="snipers" inputmode="decimal"></label><label>Insiders %<input name="insiders" inputmode="decimal"></label>
+    <label>Bundlers %<input name="bundlers" inputmode="decimal"></label><label>Holders<input name="holders" inputmode="numeric"></label>
+  </div>
+  <div class="axrow"><button type="button" id="axcancel">Cancel</button><button type="submit">Save</button></div>
+</form></div>
 <div id="login"><form id="loginform" autocomplete="off">
   <h1>🇸🇪 Sweden terminal</h1>
   <input id="pk" type="password" inputmode="text" autocomplete="current-password" placeholder="Passkey" aria-label="Passkey">
@@ -140,6 +161,14 @@ function chart(c) {
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${lines}<path d="${path}" fill="none" stroke="${col}" stroke-width="1.8" vector-effect="non-scaling-stroke"/></svg>`;
 }
 
+function liveLine(c) {
+  const l = c.live; if (!l) return "";
+  return `<div class="checks"><span>live:</span><span>top10 <b>${pct(l.top10)}</b></span><span>dev <b>${pct(l.dev, 1)}</b></span>
+    <span>bundle L/2+/4+ <b>${pct(l.bundle_launch)}</b>/<b>${pct(l.bundle_2)}</b>/<b>${pct(l.bundle_4)}</b></span>
+    <span>snipers <b>${pct(l.snipers_1_3)}</b>/<b>${pct(l.snipers_0_10)}</b></span><span>holders <b>${l.holders}</b></span>
+    <button class="axbtn" data-ax="${esc(c.mint)}" data-sym="${esc(c.sym)}">Axiom ✎</button></div>`;
+}
+
 function card(c) {
   const m = c.meta || {}, img = safeUrl(m.image), ch = c.checks || {};
   const badges = `<span class="badge b-${c.stage}">${LABEL[c.stage]}</span>` + (c.mayhem ? ' <span class="badge b-mayhem">Mayhem</span>' : "");
@@ -167,6 +196,7 @@ function card(c) {
       <span>snipers <b>${pct(ch.snipers)}</b></span><span>top3 trades <b>${pct(ch.top3_trades)}</b></span>
       <span>creator launches 24h <b>${ch.prior ?? "–"}</b></span><span>dev sold <b>${ch.dev_sold ? "yes" : "no"}</b></span>
       <span>last trade <b>${secs(c.last_trade_s)} ago</b></span></div>
+    ${liveLine(c)}
     ${m.description ? `<div class="desc">${esc(m.description)}</div>` : ""}
     <div class="links">${links.map(([t, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${t}</a>`).join("")}
 </div>
@@ -254,7 +284,11 @@ async function tick() {
   }
 }
 
+let axMint = null;
 document.addEventListener("click", (e) => {
+  const ax = e.target.closest("[data-ax]");
+  if (ax) { axMint = ax.dataset.ax; $("#axform").reset(); $("#axtitle").textContent = "What Axiom shows for $" + ax.dataset.sym + " right now";
+            $("#ax").classList.add("show"); return; }
   const f = e.target.closest("[data-f]");
   if (f) { filter = f.dataset.f; document.querySelectorAll("[data-f]").forEach((b) => b.classList.toggle("on", b === f)); render(); }
   const cp = e.target.closest("[data-copy]");
@@ -274,6 +308,19 @@ function copyCA(t, btn) {
   };
   if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(t).then(done, fallback); else fallback();
 }
+$("#axcancel").onclick = () => $("#ax").classList.remove("show");
+$("#axform").onsubmit = async (e) => {
+  e.preventDefault();
+  const values = {}; new FormData(e.target).forEach((v, k) => { v = String(v).replace(",", ".").replace("%", "").trim(); if (v) values[k] = v; });
+  const ts = $("#toast");
+  try {
+    const r = await fetch("/api/axiom", { method: "POST", headers: { "Content-Type": "application/json", "X-Sweden-Token": token },
+                                          body: JSON.stringify({ mint: axMint, values }) });
+    ts.textContent = r.ok ? "Saved - thanks" : "Not saved (empty or coin gone)";
+  } catch (err) { ts.textContent = "No connection"; }
+  ts.classList.add("show"); clearTimeout(ts._t); ts._t = setTimeout(() => ts.classList.remove("show"), 1500);
+  $("#ax").classList.remove("show");
+};
 $("#showall").onclick = (e) => { showAll = !showAll; e.target.classList.toggle("on", showAll); tick(); };
 $("#sound").onclick = (e) => {
   soundOn = !soundOn;

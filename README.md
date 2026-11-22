@@ -154,6 +154,10 @@ echo '<your passkey>' > terminal_passkey && chmod 600 terminal_passkey   # optio
 * The page asks for the passkey from `terminal_passkey` (or `SWEDEN_PASSKEY`); without one, the first start
   generates 8 digits into that file (`cat terminal_passkey`). Stays logged in for 30 days per browser; changing
   the passkey and restarting logs everyone out. Wrong passkeys lock the address out (5 tries, then 1, 5, 15, 60 min).
+* Matching Axiom: Axiom doesn't publish how it computes bundlers / snipers / insiders, so each card shows our live
+  variants (bundle: launch slot / slot with 2+ buyers / 4+ buyers; snipers: slots 1-3 / first 10 slots) and an
+  **Axiom ✎** button: type in what Axiom shows, it is saved with our numbers at that moment
+  (`data/axiom_checks.jsonl`). `./venv/bin/python sweden/axiom_compare.py` then shows which variant matches.
 * Alerts: tap "Enable sound" on the page; push to the phone with `SWEDEN_NTFY_TOPIC=<secret topic> ./terminal.sh`
   and the ntfy app.
 
