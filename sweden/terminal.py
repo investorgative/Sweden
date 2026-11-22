@@ -184,7 +184,7 @@ class Coin:
         self.price = None
         self.meta = None
         self.pool = None
-        self.copy_of = []                           # (mint, launch ts) of earlier coins with the same name / ticker
+        self.copy_of = []                           # (mint, launch ts, why) of earlier coins this one copies
         self.seen_visible = False
         self.entries = 0
         self.entry_armed = True                     # an entry alert needs a new low (or top) since the last one
@@ -207,6 +207,10 @@ def chart(c, now, n=90):
         if close is not None:
             out.append((round(end - t0), close * 1e6, (hi or close) * 1e6, (lo or close) * 1e6))
     return out
+
+
+def usd_text(x):
+    return f"${x / 1e6:.2f}M" if x >= 1e6 else f"${x / 1e3:.1f}K" if x >= 1e3 else f"${x:.0f}"
 
 
 def fetch_json(url):
@@ -237,6 +241,8 @@ def short_why(c, why):
     for r in c.fails or []:
         v = {"bundle": "bundle_pct", "snipers": "sniper_pct", "top10 concentration": "top10_pct",
              "dev holds too much": "dev_pct"}.get(r)
+        if r == "copy of earlier coin" and c.copy_of:
+            r = f"copy ({c.copy_of[0][2]})"
         out.append(f"{r.split()[0]} {f[v]:.0%}" if v and f.get(v) is not None else r)
     return ", ".join(out)
 
@@ -311,17 +317,14 @@ class Terminal:
         self.events += 1
         kind, mint = r[2], r[4]
         if kind == "C":
-            ts, creator, name, sym = r[3], r[5], r[7].strip().lower(), r[8].strip().lower()
+            ts, creator = r[3], r[5]
             hist = self.creators[creator]
             prior = sum(1 for t in hist if ts - t < 86400)
             hist.append(ts)
-            keys = {("n", name), ("s", sym)}
-            earlier = {m: t for k in keys for t, m in self.names.get(k, ()) if 0 <= ts - t < 3 * 86400 and m != mint}
-            for k in keys:
-                self.names.setdefault(k, []).append((ts, mint))
+            earlier = R.copy_matches(self.names, ts, r[7], r[8], mint)
             if not history_only and not r[12] and ts >= time.time() - self.a.max_age - 1800:
                 self.coins[mint] = Coin(r, prior, bool(earlier))
-                e = sorted(earlier.items(), key=lambda x: x[1])         # the earliest ones are the likely originals
+                e = sorted(((m, t, why) for m, (t, why) in earlier.items()), key=lambda x: x[1])  # earliest = likely originals
                 self.coins[mint].copy_of = e if len(e) <= COPY_MATCHES else e[:2] + e[-(COPY_MATCHES - 2):]
             return
         c = self.coins.get(mint)
@@ -512,6 +515,29 @@ class Terminal:
                     self.tails = {f: t for f, t in self.tails.items() if os.path.exists(f)}
 
     # ---------- API ----------
+    def lookup(self, mint):
+        """Where a pasted CA stands: which tab shows it and why, or why it is not shown at all."""
+        now = time.time()
+        with self.lock:
+            c = self.coins.get(mint)
+            if c is None:
+                return dict(found=False, text="Not among the pump.fun launches of the last "
+                            f"{(self.a.max_age + 1800) / 3600:.1f} h (older, launched elsewhere, or missed by the feed)")
+            base = dict(found=True, mint=mint, sym=c.sym, name=c.name, pool=c.pool, age_min=(now - c.ts) / 60)
+            if c.grad_ts is None or not c.pool_ok or c.price is None:
+                st = c.S
+                mc = st.vsol / st.vtok * 1e6 * self.usd if st is not None and st.vtok else None
+                return dict(base, tab=None, text="Still on the bonding curve (not graduated)"
+                            + (f" · mcap {usd_text(mc)}" if mc else ""))
+            vis, why = self.visible(c)
+            if c.mint in self.prefs.get("hide"):
+                return dict(base, tab="hidden", text="Hidden by you")
+            if vis:
+                return dict(base, tab="watch" if c.mint in self.prefs.get("watch") else "all",
+                            text=("On your watchlist · " if c.mint in self.prefs.get("watch") else "Recommended · ")
+                            + {"entry": "ENTRY", "bounce": "bounce", "zone": "in the zone", "dip": "dip"}.get(c.stage, c.stage))
+            return dict(base, tab="filtered", text="Filtered out: " + short_why(c, why))
+
     def original(self, mint):
         """Earlier coins with the same name / ticker as a copied coin: mcap, 24 h volume, liquidity (DexScreener, free)
         and a 15-min chart of the biggest one (GeckoTerminal, free). Cached for a minute per coin."""
@@ -525,7 +551,7 @@ class Terminal:
         if not matches:
             return out
         try:
-            pairs = fetch_json("https://api.dexscreener.com/tokens/v1/solana/" + ",".join(m for m, _ in matches))
+            pairs = fetch_json("https://api.dexscreener.com/tokens/v1/solana/" + ",".join(m for m, _, _ in matches))
         except Exception as e:
             pairs, out["error"] = [], f"DexScreener not reachable ({e.__class__.__name__})"
         best = {}
@@ -533,10 +559,10 @@ class Terminal:
             m = (p.get("baseToken") or {}).get("address")
             if m and ((p.get("liquidity") or {}).get("usd") or 0) >= ((best.get(m) or {}).get("liquidity") or {}).get("usd", -1):
                 best[m] = p
-        for m, ts in matches:
+        for m, ts, why in matches:
             p = best.get(m) or {}
             bt = p.get("baseToken") or {}
-            out["matches"].append(dict(mint=m, launched_h=(time.time() - ts) / 3600, name=bt.get("name"),
+            out["matches"].append(dict(mint=m, why=why, launched_h=(time.time() - ts) / 3600, name=bt.get("name"),
                                        sym=bt.get("symbol"), mcap=p.get("marketCap"),
                                        vol24=(p.get("volume") or {}).get("h24"), liq=(p.get("liquidity") or {}).get("usd"),
                                        change24=(p.get("priceChange") or {}).get("h24"), pair=p.get("pairAddress"),
@@ -639,6 +665,11 @@ def serve(t, port):
             u = urllib.parse.urlparse(self.path)
             if u.path == "/":
                 self.send(200, open(page, "rb").read(), "text/html; charset=utf-8")
+            elif u.path == "/api/coin":
+                if not gate.token_ok(self.headers.get("X-Sweden-Token")):
+                    return self.send(401, b'{"error":"locked"}', "application/json")
+                m = urllib.parse.parse_qs(u.query).get("mint", [""])[0][:64]
+                self.send(200, json.dumps(t.lookup(m)).encode(), "application/json")
             elif u.path == "/api/original":
                 if not gate.token_ok(self.headers.get("X-Sweden-Token")):
                     return self.send(401, b'{"error":"locked"}', "application/json")

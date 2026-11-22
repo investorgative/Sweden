@@ -21,7 +21,7 @@ Usage:  python3 sweden/replay.py [--kind normal|mayhem] [--size 0.5] [--lat 5] [
                                  [--horizon 7200] [--nofilter] [--set dev_pct=0.05 ...]
                                  [--dip 0.5 --min-peak 1.0 --rebound 0.1]   (buy-the-dip entry)
 """
-import argparse, bisect, collections, glob, gzip, itertools, json, os, statistics as st, sys, zlib
+import argparse, bisect, collections, difflib, glob, gzip, itertools, json, os, re, statistics as st, sys, zlib
 
 NO_CREATOR = "11111111111111111111111111111111"   # pool opened by hand, not by a migration (see pump_events.py)
 DATA = os.environ.get("SWEDEN_DATA", os.path.join(os.path.dirname(__file__), "..", "data"))
@@ -42,7 +42,8 @@ FILTER = dict(
     top3_trade_share=0.40, # the 3 most active wallets made at most 40 % of all trades (wash trading)
     same_size_share=0.30,  # at most 30 % of buys have exactly the same SOL size as another buy (volume bots)
     max_prior_launches=2,  # creator launched at most 2 other coins in the previous 24 h (serial deployer)
-    copy=False,            # name / ticker not used by an earlier launch in the previous 72 h
+    copy=False,            # not a copy of an earlier launch in the previous 72 h (same name, or same ticker with a
+                           # similar name; a shared ticker alone is not a copy: see copy_matches)
     min_netflow=3.0,       # at least 3 SOL net inflow into the curve
 )
 TPS = [0.1, 0.2, 0.3, 0.5, 0.75, 1.0, 2.0, 3.0]
@@ -107,17 +108,45 @@ def chain(c):
     c["ev"] = out
 
 
+def norm_name(s):
+    """Name without case, spaces and punctuation ("Drink Watta" == "DRINK-WATTA"); emoji-only names stay as they are."""
+    s = (s or "").strip().lower()
+    return re.sub(r"[^a-z0-9]", "", s) or s
+
+
+def similar_names(a, b):
+    """Normalised names that look like the same meme: equal, one inside the other (>= 4 letters), or nearly the same
+    spelling. "bigtittiecoin" vs "bitcoin" is not similar (a shared ticker alone does not make a copy)."""
+    if not a or not b:
+        return False
+    if a == b or (min(len(a), len(b)) >= 4 and (a in b or b in a)):
+        return True
+    return difflib.SequenceMatcher(None, a, b).ratio() >= 0.8
+
+
+def copy_matches(index, ts, name, sym, mint=None, window=3 * 86400):
+    """Earlier launches (within `window`) this one copies: {mint: (ts, why)}; then adds this launch to `index`
+    (("n", name) / ("s", ticker) -> [(ts, mint, name)]). Same name = copy; same ticker = copy only with a similar name."""
+    n, s, out = norm_name(name), (sym or "").strip().lower(), {}
+    for t, m, _ in index.get(("n", n), ()):
+        if 0 <= ts - t < window and m != mint:
+            out[m] = (t, "same name")
+    for t, m, nn in index.get(("s", s), ()):
+        if 0 <= ts - t < window and m != mint and m not in out and similar_names(n, nn):
+            out[m] = (t, "same ticker, similar name")
+    for k in {("n", n), ("s", s)}:
+        index.setdefault(k, []).append((ts, mint, n))
+    return out
+
+
 def annotate_history(coins):
-    """Creator's earlier launches (24 h) and copied names/tickers (72 h), from launches seen in the data."""
+    """Creator's earlier launches (24 h) and copies of earlier launches (72 h), from launches seen in the data."""
     by_creator, names = collections.defaultdict(list), {}
     for c in sorted(coins.values(), key=lambda c: c["ts"]):
         prev = [t for t in by_creator[c["creator"]] if c["ts"] - t < 86400]
         c["prior_launches"] = len(prev)
         by_creator[c["creator"]].append(c["ts"])
-        keys = {("n", c["name"].strip().lower()), ("s", c["sym"].strip().lower())}
-        c["copy"] = any(k in names and c["ts"] - names[k] < 3 * 86400 for k in keys)
-        for k in keys:
-            names.setdefault(k, c["ts"])
+        c["copy"] = bool(copy_matches(names, c["ts"], c["name"], c["sym"], c["mint"]))
 
 
 class State:
