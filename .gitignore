@@ -5,3 +5,4 @@ __pycache__/
 data/
 venv/
 terminal_passkey
+ntfy_topic

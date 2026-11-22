@@ -50,7 +50,26 @@ TPS = [0.1, 0.2, 0.3, 0.5, 0.75, 1.0, 2.0, 3.0]
 SLS = [0.2, 0.3, 0.5]
 
 
-def load():
+def graduated_mints():
+    """Mints that graduated (graduation event or migration pool), from a quick scan that parses only those lines."""
+    out = set()
+    for f in sorted(glob.glob(os.path.join(DATA, "*", "events-*.jsonl.gz"))):
+        try:
+            for line in gzip.open(f, "rt"):
+                if '"G",' in line or '"P",' in line:
+                    try:
+                        out.add(json.loads(line)[4])
+                    except Exception:
+                        pass
+        except (EOFError, OSError, zlib.error):
+            continue
+    return out
+
+
+def load(only=None):
+    """All coins with their trades. With `only` (a set of mints) trades are kept for those coins only: launches are
+    still read for every coin (creator history, copies), but memory stays small - all trades of all coins need more
+    RAM than the Pi has (22 Nov: two loads at once froze it)."""
     files = sorted(glob.glob(os.path.join(DATA, "*", "events-*.jsonl.gz")))
     coins, order = {}, 0
     t_min, t_max = None, None
@@ -71,7 +90,7 @@ def load():
                     coins[mint] = dict(mint=mint, slot=slot, ts=ts, creator=creator, signer=signer, name=name,
                                        sym=sym, quote=quote, flag=flag, vsol0=vsol, vtok0=vtok, ev=[], grad=None,
                                        pool=None, sw=[])
-                elif mint in coins:
+                elif mint in coins and (only is None or mint in only):
                     if kind == "T":
                         coins[mint]["ev"].append((slot, order, r))
                     elif kind == "G":

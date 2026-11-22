@@ -102,12 +102,12 @@ def trade(path, sig_slot, a, tp, sl):
     end = es + int(a.horizon / R.SLOT_S)
     for k in range(j + 1, len(path)):
         if slots[k] > end:
-            return ret(k - 1), "time"
+            return ret(k - 1), "time", slots[k - 1]
         r = ret(k)
         if r >= tp or r <= -sl:
             f = max(k, bisect.bisect_left(slots, slots[k] + a.lat) - 1)
-            return ret(f), "tp" if r >= tp else "sl"
-    return ret(len(path) - 1), "end"
+            return ret(f), "tp" if r >= tp else "sl", slots[f]
+    return ret(len(path) - 1), "end", slots[-1]
 
 
 def main():
@@ -127,6 +127,8 @@ def main():
     ap.add_argument("--lat", type=int, default=5)
     ap.add_argument("--net-cost", type=float, default=0.0015)
     ap.add_argument("--nofilter", action="store_true")
+    ap.add_argument("--max-gap", type=float, default=10, help="drop a trade if a PumpSwap collector gap of at least "
+                    "this many seconds falls between its entry and exit")
     ap.add_argument("--at", type=float, help="baseline: buy this many seconds after graduation, no pattern")
     a = ap.parse_args()
     usd = a.sol_usd or sol_usd()
@@ -134,10 +136,13 @@ def main():
         sys.exit("could not fetch the SOL price - pass --sol-usd")
     cap_sol = a.max_mcap_usd / usd
 
-    coins, _, t0, t1 = R.load()
+    coins, _, t0, t1 = R.load(only=R.graduated_mints())    # trades of graduated coins only (RAM)
     R.annotate_history(coins)
     gp = os.path.join(R.DATA, "gaps_swap.jsonl")
     gaps = [json.loads(l) for l in open(gp) if l.strip()] if os.path.exists(gp) else []
+    # Every swap event carries the pool's full reserves, so a short gap only costs a few price points. A trade is
+    # dropped only if a gap of at least --max-gap seconds falls between its entry and exit (a dump could hide there).
+    long_gaps = [g for g in gaps if g["to"] - g["from"] >= a.max_gap]
     excl, cands = {}, []
     def x(k): excl[k] = excl.get(k, 0) + 1
     for c in coins.values():
@@ -151,8 +156,6 @@ def main():
         g_ts = p[3]
         if g_ts + a.window + a.horizon > t1:
             x("too recent (window + horizon not complete)"); continue
-        if any(g["from"] <= g_ts + a.window + a.horizon and g["to"] >= g_ts - 5 for g in gaps):
-            x("PumpSwap collector gap"); continue
         if not c["sw"]:
             x("no swaps"); continue
         if not a.nofilter:
@@ -190,16 +193,28 @@ def main():
     mid = st.median(c["ts"] for c, _, _ in sigs)
     print(f"\n{'TP / SL':>9} {'n':>5} {'win':>5} {'avg':>7} {'median':>7} {'total SOL':>10} | "
           f"{'1st half avg':>12} {'2nd half avg':>12}  exits")
+    def gap_hit(c, s, e):
+        t_of = lambda slot: c["pool"][3] + (slot - c["pool"][0]) * R.SLOT_S
+        t_s, t_e = t_of(s) - 5, t_of(e) + 5
+        return any(g["from"] <= t_e and g["to"] >= t_s for g in long_gaps)
+    print(f"collector gaps >= {a.max_gap:.0f} s: {len(long_gaps)} of {len(gaps)} (a trade overlapping one is dropped)")
     for tp in a.tp:
-        res = [(c["ts"] < mid,) + trade(p, s, a, tp, tp) for c, p, s in sigs]
+        res, dropped = [], 0
+        for c, p, s in sigs:
+            r, kind, e = trade(p, s, a, tp, tp)
+            if gap_hit(c, s, e):
+                dropped += 1; continue
+            res.append((c["ts"] < mid, r, kind))
         r = [x[1] for x in res]
+        if not r:
+            print(f"+{tp:.0%}/-{tp:.0%}  no trade left (dropped for a gap: {dropped})"); continue
         h1 = [x[1] for x in res if x[0]]; h2 = [x[1] for x in res if not x[0]]
         ex = {}
         for x in res:
             ex[x[2]] = ex.get(x[2], 0) + 1
         print(f"+{tp:.0%}/-{tp:.0%} {len(r):>5} {sum(v > 0 for v in r) / len(r):>5.0%} {st.mean(r):>+7.1%} "
               f"{st.median(r):>+7.1%} {sum(r) * a.size:>+10.2f} | {st.mean(h1) if h1 else 0:>+12.1%} "
-              f"{st.mean(h2) if h2 else 0:>+12.1%}  {ex}")
+              f"{st.mean(h2) if h2 else 0:>+12.1%}  {ex}" + (f"  (dropped for a gap: {dropped})" if dropped else ""))
 
 
 if __name__ == "__main__":

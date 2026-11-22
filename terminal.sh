@@ -4,12 +4,15 @@
 # restart (shown at the end of this script and in logs/tunnel.log). The page asks for a passkey: set your own with
 #   echo '<your passkey>' > terminal_passkey && chmod 600 terminal_passkey && ./terminal.sh
 # (at least 6 characters; without one, the first start generates 8 digits into that file).
-# Push alerts to your phone: SWEDEN_NTFY_TOPIC=<secret topic> ./terminal.sh   (ntfy app, subscribe to that topic)
+# Push alerts to your phone: echo '<secret topic>' > ntfy_topic && ./terminal.sh   (ntfy app, subscribe to that topic;
+# SWEDEN_NTFY_TOPIC=<topic> ./terminal.sh also works)
 cd "$(dirname "$0")"
 DIR="$(pwd)"
 PY="$DIR/venv/bin/python"
 [ -x "$PY" ] || { echo "venv missing - run ./setup.sh first"; exit 1; }
 mkdir -p "$DIR/logs"
+# ntfy topic: from the environment, else from the file ntfy_topic (one line, kept out of git)
+[ -z "${SWEDEN_NTFY_TOPIC:-}" ] && [ -f "$DIR/ntfy_topic" ] && SWEDEN_NTFY_TOPIC="$(head -n1 "$DIR/ntfy_topic" | tr -d '[:space:]')"
 tmux kill-session -t =SwedenTerminal 2>/dev/null
 : > logs/tunnel.log
 tmux new-session -d -s SwedenTerminal "cd '$DIR' && while true; do SWEDEN_NTFY_TOPIC='${SWEDEN_NTFY_TOPIC:-}' '$PY' -u sweden/terminal.py $* 2>&1 | tee -a logs/terminal.log; echo 'terminal exited - restarting in 10s'; sleep 10; done"
