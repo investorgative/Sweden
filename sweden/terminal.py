@@ -184,7 +184,7 @@ class Coin:
         self.price = None
         self.meta = None
         self.pool = None
-        self.copy_of = []                           # (mint, launch ts, why) of earlier coins this one copies
+        self.copy_of = []                           # (mint, launch ts, why) of earlier graduated coins it copies
         self.seen_visible = False
         self.entries = 0
         self.entry_armed = True                     # an entry alert needs a new low (or top) since the last one
@@ -280,6 +280,7 @@ class Terminal:
         self.coins = {}
         self.creators = collections.defaultdict(list)
         self.names = {}
+        self.graduated = {}                     # mint -> graduation ts, every coin in the data
         self.tails = {}
         self.lock = threading.Lock()
         self.alerts = collections.deque(maxlen=200)
@@ -304,7 +305,7 @@ class Terminal:
                 t = self.tails[f] = Tail(f)
             only_launches = not self.live and os.path.getmtime(f) < recent   # old file: history only
             for line in t.lines():
-                if only_launches and b'"C",' not in line:
+                if only_launches and b'"C",' not in line and b'"G",' not in line and b'"P",' not in line:
                     continue
                 try:
                     r = json.loads(line)
@@ -321,12 +322,14 @@ class Terminal:
             hist = self.creators[creator]
             prior = sum(1 for t in hist if ts - t < 86400)
             hist.append(ts)
-            earlier = R.copy_matches(self.names, ts, r[7], r[8], mint)
+            earlier = R.copy_matches(self.names, ts, r[7], r[8], mint, self.graduated)
             if not history_only and not r[12] and ts >= time.time() - self.a.max_age - 1800:
                 self.coins[mint] = Coin(r, prior, bool(earlier))
                 e = sorted(((m, t, why) for m, (t, why) in earlier.items()), key=lambda x: x[1])  # earliest = likely originals
                 self.coins[mint].copy_of = e if len(e) <= COPY_MATCHES else e[:2] + e[-(COPY_MATCHES - 2):]
             return
+        if kind == "G" or (kind == "P" and r[9] != R.NO_CREATOR):
+            self.graduated.setdefault(mint, r[3])   # for the copy check (only copies of graduated coins count)
         c = self.coins.get(mint)
         if c is None:
             return
@@ -512,6 +515,7 @@ class Terminal:
                             del self.creators[k]
                     cut = time.time() - HISTORY_S
                     self.names = {k: v for k, v in ((k, [x for x in v if x[0] >= cut]) for k, v in self.names.items()) if v}
+                    self.graduated = {m: t for m, t in self.graduated.items() if t >= cut}
                     self.tails = {f: t for f, t in self.tails.items() if os.path.exists(f)}
 
     # ---------- API ----------

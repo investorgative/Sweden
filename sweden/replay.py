@@ -42,8 +42,8 @@ FILTER = dict(
     top3_trade_share=0.40, # the 3 most active wallets made at most 40 % of all trades (wash trading)
     same_size_share=0.30,  # at most 30 % of buys have exactly the same SOL size as another buy (volume bots)
     max_prior_launches=2,  # creator launched at most 2 other coins in the previous 24 h (serial deployer)
-    copy=False,            # not a copy of an earlier launch in the previous 72 h (same name, or same ticker with a
-                           # similar name; a shared ticker alone is not a copy: see copy_matches)
+    copy=False,            # not a copy of an earlier launch of the previous 72 h that had graduated (same name, or
+                           # same ticker with a similar name; a shared ticker alone is not a copy: see copy_matches)
     min_netflow=3.0,       # at least 3 SOL net inflow into the curve
 )
 TPS = [0.1, 0.2, 0.3, 0.5, 0.75, 1.0, 2.0, 3.0]
@@ -124,15 +124,21 @@ def similar_names(a, b):
     return difflib.SequenceMatcher(None, a, b).ratio() >= 0.8
 
 
-def copy_matches(index, ts, name, sym, mint=None, window=3 * 86400):
+def copy_matches(index, ts, name, sym, mint=None, graduated=None, window=3 * 86400):
     """Earlier launches (within `window`) this one copies: {mint: (ts, why)}; then adds this launch to `index`
-    (("n", name) / ("s", ticker) -> [(ts, mint, name)]). Same name = copy; same ticker = copy only with a similar name."""
+    (("n", name) / ("s", ticker) -> [(ts, mint, name)]). Same name = copy; same ticker = copy only with a similar name.
+    With `graduated` ({mint: graduation ts}) only earlier coins that had graduated before this launch count: a coin
+    that follows dead attempts with the same name is often the one the community picked, not a copycat (data 22 Nov:
+    of 303 graduates, 93 followed a graduated namesake, 112 only dead ones)."""
     n, s, out = norm_name(name), (sym or "").strip().lower(), {}
+
+    def ok(t, m):
+        return 0 <= ts - t < window and m != mint and (graduated is None or graduated.get(m, ts) < ts)
     for t, m, _ in index.get(("n", n), ()):
-        if 0 <= ts - t < window and m != mint:
+        if ok(t, m):
             out[m] = (t, "same name")
     for t, m, nn in index.get(("s", s), ()):
-        if 0 <= ts - t < window and m != mint and m not in out and similar_names(n, nn):
+        if ok(t, m) and m not in out and similar_names(n, nn):
             out[m] = (t, "same ticker, similar name")
     for k in {("n", n), ("s", s)}:
         index.setdefault(k, []).append((ts, mint, n))
@@ -142,11 +148,12 @@ def copy_matches(index, ts, name, sym, mint=None, window=3 * 86400):
 def annotate_history(coins):
     """Creator's earlier launches (24 h) and copies of earlier launches (72 h), from launches seen in the data."""
     by_creator, names = collections.defaultdict(list), {}
+    graduated = {c["mint"]: c["ts"] + (c["grad"] - c["slot"]) * SLOT_S for c in coins.values() if c["grad"]}
     for c in sorted(coins.values(), key=lambda c: c["ts"]):
         prev = [t for t in by_creator[c["creator"]] if c["ts"] - t < 86400]
         c["prior_launches"] = len(prev)
         by_creator[c["creator"]].append(c["ts"])
-        c["copy"] = bool(copy_matches(names, c["ts"], c["name"], c["sym"], c["mint"]))
+        c["copy"] = bool(copy_matches(names, c["ts"], c["name"], c["sym"], c["mint"], graduated))
 
 
 class State:

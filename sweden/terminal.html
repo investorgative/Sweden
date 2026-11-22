@@ -408,7 +408,7 @@ function lineChart(pts) {
 function origBlock(c) {
   if (openDetails.has(c.mint)) loadOrig(c.mint);
   const hit = origCache.get(c.mint);
-  const head = `<div class="ot">Copy: ${c.copy_of} earlier coin${c.copy_of === 1 ? "" : "s"} with the same name or ticker (last 72 h)</div>`;
+  const head = `<div class="ot">Copy of ${c.copy_of} earlier coin${c.copy_of === 1 ? "" : "s"} that had already graduated (same name, or same ticker and similar name, last 72 h)</div>`;
   if (!hit) return `<div class="orig">${head}<div class="ot">Loading…</div></div>`;
   const d = hit.d, ms = d.matches || [];
   const rows = ms.map((o, i) => {
