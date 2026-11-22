@@ -185,6 +185,7 @@ class Coin:
         self.pool = None
         self.seen_visible = False
         self.entries = 0
+        self.entry_armed = True                     # an entry alert needs a new low (or top) since the last one
         self.last_trade = None
 
 
@@ -204,6 +205,33 @@ def chart(c, now, n=90):
         if close is not None:
             out.append((round(end - t0), close * 1e6, (hi or close) * 1e6, (lo or close) * 1e6))
     return out
+
+
+def status(c, vis, why, prefs):
+    """One word for the radar: rec / watch / waiting (passes, not dipped yet) / filtered / mayhem / dead / hidden."""
+    if c.mint in prefs.get("hide"):
+        return "hidden"
+    if vis:
+        return "watch" if c.mint in prefs.get("watch") else "rec"
+    if why.startswith("not yet"):
+        return "waiting"
+    if why.startswith("Mayhem"):
+        return "mayhem"
+    if why.startswith("dead"):
+        return "dead"
+    return "filtered"
+
+
+def short_why(c, why):
+    """The hide reason in a few words, with the failing number where we have it."""
+    if not why.startswith("filter: "):
+        return why.split(" (")[0]
+    f, out = c.feat or {}, []
+    for r in c.fails or []:
+        v = {"bundle": "bundle_pct", "snipers": "sniper_pct", "top10 concentration": "top10_pct",
+             "dev holds too much": "dev_pct"}.get(r)
+        out.append(f"{r.split()[0]} {f[v]:.0%}" if v and f.get(v) is not None else r)
+    return ", ".join(out)
 
 
 class Prefs:
@@ -331,7 +359,7 @@ class Terminal:
             return
         c.last_slot, c.price, c.last_trade = slot, p, ts
         if p > c.peak:
-            c.peak, c.low, c.hi, c.mode = p, None, None, "top"
+            c.peak, c.low, c.hi, c.mode, c.entry_armed = p, None, None, "top", True
         dd = 1 - p / c.peak
         old = c.stage
         if dd > a.dd_max:
@@ -346,7 +374,7 @@ class Terminal:
                 c.stage = "dip" if dd >= a.show_dd else "top"
         else:
             if p < c.low:
-                c.low, c.mode, c.stage = p, "drop", "zone"
+                c.low, c.mode, c.stage, c.entry_armed = p, "drop", "zone", True
             else:
                 c.hi = max(c.hi, p)
                 c.stage = "entry" if p <= c.hi * (1 - a.pullback) else "bounce"
@@ -354,8 +382,8 @@ class Terminal:
         if vis and not c.seen_visible:
             c.seen_visible = True
             self.alert(c, "new", f"{c.sym} is {dd:.0%} below its top - check the meme")
-        if vis and c.stage == "entry" and old != "entry":
-            c.entries += 1
+        if vis and c.stage == "entry" and old != "entry" and c.entry_armed:
+            c.entries, c.entry_armed = c.entries + 1, False
             self.alert(c, "entry", f"{c.sym}: ENTRY - bounced and pulled back {self.mcap_text(c)}")
 
     def mcap_usd(self, c):
@@ -401,14 +429,27 @@ class Terminal:
             threading.Thread(target=self.push, args=(topic, kind, c, text), daemon=True).start()
 
     def push(self, topic, kind, c, text):
+        """Push to the phone (ntfy). The CA is the last line, so it can be copied from the notification; tapping
+        opens the coin on Axiom."""
         try:
-            req = urllib.request.Request(f"https://ntfy.sh/{urllib.parse.quote(topic)}", data=text.encode(),
-                                         headers={"Title": "Sweden: " + ("ENTRY" if kind == "entry" else "new coin"),
+            req = urllib.request.Request(f"https://ntfy.sh/{urllib.parse.quote(topic)}",
+                                         data=(text + ("\n" + c.mint if c else "")).encode(),
+                                         headers={"Title": "Sweden: " + {"entry": "ENTRY", "new": "new coin"}.get(kind, kind),
                                                   "Priority": "high" if kind == "entry" else "default",
-                                                  "Click": f"https://pump.fun/coin/{c.mint}"})
+                                                  **({"Click": f"https://axiom.trade/meme/{c.pool or c.mint}?chain=sol"} if c else {})})
             urllib.request.urlopen(req, timeout=10).read()
+            return True
         except Exception as e:
             log("ntfy failed:", repr(e))
+            return False
+
+    def test_push(self):
+        """(sent?, message) - a test notification from the page's button."""
+        topic = os.environ.get("SWEDEN_NTFY_TOPIC")
+        if not topic:
+            return False, "push is off: start with SWEDEN_NTFY_TOPIC=<your topic> ./terminal.sh"
+        ok = self.push(topic, "test", None, "Test from the Sweden terminal - push works")
+        return ok, "test push sent - check your phone" if ok else "sending failed (see logs/terminal.log)"
 
     # ---------- background ----------
     def meta_worker(self):
@@ -473,7 +514,7 @@ class Terminal:
 
     def state(self, show_all):
         now = time.time()
-        out, counts = [], {"filtered": 0, "hidden": 0}
+        out, counts, radar = [], {"filtered": 0, "hidden": 0, "waiting": 0}, []
         with self.lock:
             for c in self.coins.values():
                 if c.grad_ts is None or not c.pool_ok or c.price is None:
@@ -483,6 +524,10 @@ class Terminal:
                     counts["hidden"] += 1
                 elif not vis:
                     counts["filtered"] += 1
+                    if why.startswith("not yet"):
+                        counts["waiting"] += 1
+                radar.append(dict(mint=c.mint, sym=c.sym, grad_min=(now - c.grad_ts) / 60, mcap_usd=self.mcap_usd(c),
+                                  status=status(c, vis, why, self.prefs), why=short_why(c, why)))
                 if not vis and not show_all:
                     continue
                 f = c.feat or {}
@@ -502,6 +547,7 @@ class Terminal:
                     live=c.H.metrics(), meta=c.meta or {}))
             alerts = list(self.alerts)
         return dict(now=now, live=self.live, sol_usd=self.usd, coins=out, alerts=alerts, all=show_all, counts=counts,
+                    radar=sorted(radar, key=lambda r: r["grad_min"]),
                     settings=dict(max_age_h=self.a.max_age / 3600, max_mcap_usd=self.a.max_mcap_usd, bundle_max=self.a.bundle_max,
                                   top10_max=R.FILTER["top10_pct"], sniper_max=R.FILTER["sniper_pct"],
                                   dev_max=R.FILTER["dev_pct"], prior_max=R.FILTER["max_prior_launches"],
@@ -546,9 +592,14 @@ def serve(t, port):
                 self.send(404, b"not found", "text/plain")
 
         def do_POST(self):
-            if self.path not in ("/api/login", "/api/axiom", "/api/prefs"):
+            if self.path not in ("/api/login", "/api/axiom", "/api/prefs", "/api/testpush"):
                 return self.send(404, b"not found", "text/plain")
             n = int(self.headers.get("Content-Length") or 0)
+            if self.path == "/api/testpush":
+                if not gate.token_ok(self.headers.get("X-Sweden-Token")):
+                    return self.send(401, b'{"error":"locked"}', "application/json")
+                ok, msg = t.test_push()
+                return self.send(200, json.dumps(dict(ok=ok, msg=msg)).encode(), "application/json")
             if self.path == "/api/prefs":
                 if not gate.token_ok(self.headers.get("X-Sweden-Token")):
                     return self.send(401, b'{"error":"locked"}', "application/json")

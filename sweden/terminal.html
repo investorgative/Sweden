@@ -14,7 +14,8 @@
   }
   * { box-sizing: border-box; }
   html { -webkit-text-size-adjust: 100%; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.35 Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  body { margin: 0; min-height: 100vh;
+         background: radial-gradient(1100px 420px at 50% -180px, rgba(82,111,255,.11), transparent 70%), var(--bg); color: var(--text); font: 14px/1.35 Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
   button { font: inherit; color: inherit; cursor: pointer; }
   svg.i { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; flex: none; }
   .num { font-variant-numeric: tabular-nums; }
@@ -27,7 +28,8 @@
   .status { color: var(--muted); font-size: 12px; display: flex; align-items: center; gap: 6px; min-width: 0;
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); flex: none; }
-  .dot.live { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .dot.live { background: var(--green); box-shadow: 0 0 8px var(--green); animation: breathe 2.4s ease-in-out infinite; }
+  @keyframes breathe { 50% { box-shadow: 0 0 2px var(--green); opacity: .65; } }
   .spacer { flex: 1; }
   .iconbtn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; background: var(--panel2);
              border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; font-size: 13px; color: var(--muted); }
@@ -45,6 +47,62 @@
   .rules { color: var(--faint); font-size: 12px; margin: 0 0 12px; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); gap: 14px; align-items: start; }
   .empty { color: var(--muted); padding: 60px 0; text-align: center; grid-column: 1 / -1; }
+  .content { display: flex; flex-direction: column; gap: 16px; }
+  .grid:empty { display: none; }
+
+  /* new cards and feed rows fade in once (never on the 3-s refresh) */
+  .enter { animation: enter .45s ease-out both; }
+  @keyframes enter { from { opacity: 0; transform: translateY(8px); } }
+
+  /* radar */
+  #radar { background: linear-gradient(180deg, rgba(22,25,35,.75), rgba(15,17,23,.75)); border: 1px solid var(--line);
+           border-radius: 16px; padding: 18px; display: grid; grid-template-columns: auto 1fr; gap: 22px; align-items: center; }
+  #radar[hidden] { display: none; }
+  #radar.compact { order: 2; padding: 12px 14px; gap: 14px; }
+  .rwrap { position: relative; width: 270px; height: 270px; }
+  #radar.compact .rwrap { width: 130px; height: 130px; }
+  .rwrap svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+  .ring { fill: none; stroke: var(--line); stroke-width: .6; }
+  .ring.outer { stroke: var(--panel3); stroke-width: .9; }
+  .rlab { fill: var(--faint); font-size: 6px; }
+  #radar.compact .rlab { display: none; }
+  .sweep { position: absolute; inset: 0; border-radius: 50%; pointer-events: none; will-change: transform;
+           background: conic-gradient(from 0deg, transparent 0deg 300deg, rgba(82,111,255,.04) 310deg, rgba(82,111,255,.22) 359deg, transparent 360deg);
+           animation: sweep 6s linear infinite; }
+  @keyframes sweep { to { transform: rotate(360deg); } }
+  .blip.rec { fill: var(--green); } .blip.watch { fill: var(--yellow); } .blip.waiting { fill: var(--cyan); }
+  .blip.filtered { fill: var(--red); opacity: .45; } .blip.mayhem { fill: var(--purple); opacity: .35; }
+  .blip.dead { fill: var(--faint); opacity: .6; }
+  .blip.rec { filter: drop-shadow(0 0 3px var(--green)); } .blip.watch { filter: drop-shadow(0 0 3px var(--yellow)); }
+  .ping { fill: none; stroke: var(--cyan); stroke-width: .8; animation: ping 1.4s ease-out forwards; transform-box: fill-box; transform-origin: center; }
+  @keyframes ping { from { opacity: .9; transform: scale(1); } to { opacity: 0; transform: scale(5); } }
+  .rinfo { min-width: 0; }
+  .rtitle { font-weight: 800; font-size: 18px; display: flex; align-items: center; gap: 10px; }
+  #radar.compact .rtitle { font-size: 14px; }
+  .rsub { color: var(--muted); font-size: 12px; margin: 4px 0 12px; }
+  #radar.compact .rsub { display: none; }
+  .rstats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+  .rs { background: var(--panel2); border-radius: 10px; padding: 8px 10px; }
+  .rs .v { font-weight: 800; font-size: 20px; }
+  #radar.compact .rs .v { font-size: 16px; }
+  .rs .k { color: var(--muted); font-size: 11px; display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+  .lg { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex: none; }
+  .feed { display: flex; flex-direction: column; gap: 4px; }
+  #radar.compact .feed { display: none; }
+  .frow { display: grid; grid-template-columns: 9px minmax(60px, 1fr) auto auto; gap: 10px; align-items: center; font-size: 12px;
+          padding: 6px 8px; border-radius: 8px; background: rgba(22,25,35,.6); cursor: pointer; }
+  .frow:hover { background: var(--panel2); }
+  .frow .s { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .frow .s small { color: var(--muted); font-weight: 400; margin-left: 6px; }
+  .frow .w { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 210px; }
+  .frow .t { color: var(--faint); white-space: nowrap; }
+  .ftitle { color: var(--faint); font-size: 11px; text-transform: uppercase; letter-spacing: .6px; margin: 4px 0 2px; }
+  .c-rec { background: var(--green); } .c-watch { background: var(--yellow); } .c-waiting { background: var(--cyan); }
+  .c-filtered { background: var(--red); } .c-mayhem { background: var(--purple); } .c-dead { background: var(--faint); }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
 
   /* latest alert */
   #latest { display: none; position: sticky; top: var(--hh, 96px); z-index: 4; margin: -14px -16px 14px; padding: 8px 16px;
@@ -146,7 +204,17 @@
            font-weight: 700; padding: 10px 16px; border-radius: 10px; display: none; white-space: nowrap; }
   #toast.show { display: block; }
 
+  @media (max-width: 720px) {
+    #radar { grid-template-columns: 1fr; justify-items: center; }
+    #radar .rinfo { width: 100%; }
+    .rwrap { width: 230px; height: 230px; }
+    #radar.compact { grid-template-columns: auto 1fr; justify-items: stretch; }
+    #radar.compact .rwrap { width: 96px; height: 96px; }
+    .rstats { grid-template-columns: repeat(2, 1fr); }
+    #radar.compact .rstats { grid-template-columns: repeat(2, 1fr); margin-bottom: 0; }
+  }
   @media (max-width: 480px) {
+    .iconbtn span { display: none; }
     header { padding: 8px 12px; } main { padding: 12px 12px 60px; } #latest { margin: -12px -12px 12px; padding: 8px 12px; }
     .kpis { grid-template-columns: repeat(2, 1fr); }
     .status .long { display: none; }
@@ -159,6 +227,7 @@
     <div class="logo">🇸🇪 Sweden</div>
     <div class="status"><span id="dot" class="dot"></span><span id="status">connecting…</span></div>
     <div class="spacer"></div>
+    <button class="iconbtn" id="testpush" title="Send a test push to your phone (ntfy)"></button>
     <button class="iconbtn" id="sound" title="Sound and notifications"></button>
     <button class="iconbtn" id="lock" title="Lock"></button>
   </div>
@@ -183,7 +252,10 @@
 <main>
   <div id="latest"><div class="t" id="latesttext"></div><button id="latestcopy">Copy CA</button></div>
   <p class="rules" id="rules"></p>
-  <div class="grid" id="grid"></div>
+  <div class="content">
+    <section id="radar" class="hero" hidden></section>
+    <div class="grid" id="grid"></div>
+  </div>
   <div id="log"></div>
 </main>
 <script>
@@ -205,6 +277,7 @@ const P = {
   belloff: '<path d="M3 3l18 18M8.7 3.7A6 6 0 0 1 18 8c0 3 .5 5 1.2 6.4M17 17H3s3-2 3-9c0-.5 0-1 .2-1.5M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',
   lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
+  phone: '<rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/>',
 };
 const ic = (n) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${P[n]}</svg>`;
 
@@ -214,7 +287,8 @@ const TABS = [["all", "Recommended"], ["watch", "★ Watchlist"], ["entry", "Ent
               ["dip", "Dip"], ["filtered", "Filtered out"], ["hidden", "Hidden by me"]];
 const NEEDS_ALL = ["filtered", "hidden"];             // tabs that need the coins the filter hides
 let tab = "all", soundOn = false, audio = null, lastAlert = null, state = null, token = null;
-const openDetails = new Set();
+const openDetails = new Set(), cardsSeen = new Set();
+let cardsReady = false;
 try { token = localStorage.getItem("swedenToken"); tab = localStorage.getItem("swedenTab") || "all"; } catch (e) {}
 
 const $ = (s) => document.querySelector(s);
@@ -276,7 +350,8 @@ function card(c) {
     (!c.visible ? `<span class="why">${esc(c.hidden)}</span>` : "");
   const lastCls = c.last_trade_s == null ? "" : c.last_trade_s > 600 ? "red" : c.last_trade_s < 60 ? "green" : "";
   const open = openDetails.has(c.mint) ? " open" : "";
-  return `<div class="card stage-${c.stage}${c.watched ? " watched" : ""}${c.visible ? "" : " filtered"}" data-mint="${esc(c.mint)}">
+  const fresh = cardsReady && !cardsSeen.has(c.mint); cardsSeen.add(c.mint);
+  return `<div class="card stage-${c.stage}${c.watched ? " watched" : ""}${c.visible ? "" : " filtered"}${fresh ? " enter" : ""}" data-mint="${esc(c.mint)}">
   <div class="head">
     ${img ? `<img class="img" data-copy="${esc(c.mint)}" src="${esc(img)}" loading="lazy" referrerpolicy="no-referrer" alt="">` : `<div class="img" data-copy="${esc(c.mint)}"></div>`}
     <div class="title">
@@ -323,6 +398,70 @@ function card(c) {
 </div>`;
 }
 
+// ---------- radar (built once, then updated in place so nothing restarts on refresh) ----------
+const R_MAX = 100, R_MIN = 10, HOURS = 6;
+const STATUS = { rec: "Recommended", watch: "Watchlist", waiting: "Passes checks, waiting for the dip", filtered: "Filtered out",
+                 mayhem: "Mayhem", dead: "Dead (crashed)" };
+const blips = new Map(), feedSeen = new Set();
+let radarBuilt = false, radarFirst = true;
+function hash(s) { let h = 2166136261; for (const ch of s) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return (h >>> 0) / 4294967296; }
+function buildRadar() {
+  const rings = [1, 2, 3, 4, 5, 6].map((h) => { const r = R_MIN + (h / HOURS) * (R_MAX - R_MIN);
+    return `<circle class="ring${h === HOURS ? " outer" : ""}" r="${r}"/><text class="rlab" x="2" y="${-r + 7}">${h}h</text>`; }).join("");
+  $("#radar").innerHTML = `<div class="rwrap"><svg viewBox="-104 -104 208 208" aria-hidden="true">
+      <line class="ring" x1="-${R_MAX}" x2="${R_MAX}" y1="0" y2="0"/><line class="ring" y1="-${R_MAX}" y2="${R_MAX}" x1="0" x2="0"/>
+      ${rings}<circle r="2" fill="var(--blue)"/><g id="blips"></g><g id="pings"></g></svg><div class="sweep"></div></div>
+    <div class="rinfo"><div class="rtitle"><span class="dot live"></span><span id="rtitle">Scanning graduates</span></div>
+      <div class="rsub">Every pump.fun graduate of the last ${HOURS} h. Centre = just graduated, each ring one more hour. Tap a row to copy its CA.</div>
+      <div class="rstats num" id="rstats"></div><div class="feed" id="feed"></div></div>`;
+  radarBuilt = true;
+}
+function updateRadar() {
+  const el = $("#radar"), rec = state.coins.filter((c) => c.visible && !c.user_hidden).length;
+  const hero = tab === "all" && rec === 0;
+  el.hidden = !(tab === "all" || tab === "watch");
+  if (el.hidden) return;
+  if (!radarBuilt) buildRadar();
+  el.className = hero ? "hero" : "compact";
+  const rs = (state.radar || []).filter((r) => r.status !== "hidden");
+  const n = (st) => rs.filter((r) => r.status === st).length;
+  $("#rtitle").textContent = hero ? "Scanning graduates" : "Radar";
+  $("#rstats").innerHTML = [["waiting", "Waiting for dip", n("waiting")], ["filtered", "Filtered out", n("filtered")],
+    ["mayhem", "Mayhem", n("mayhem")], ["dead", "Dead", n("dead")]]
+    .map(([st, k, v]) => `<div class="rs"><div class="v">${v}</div><div class="k"><span class="lg c-${st}"></span>${k}</div></div>`).join("");
+  // blips: create new ones (with a single ping), move existing ones, drop gone ones
+  const g = $("#blips"), live = new Set();
+  for (const r of rs) {
+    live.add(r.mint);
+    const rad = R_MIN + Math.min(r.grad_min / 60, HOURS) / HOURS * (R_MAX - R_MIN), a = hash(r.mint) * 2 * Math.PI;
+    const x = (Math.cos(a) * rad).toFixed(1), y = (Math.sin(a) * rad).toFixed(1);
+    let b = blips.get(r.mint);
+    if (!b) {
+      b = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      b.setAttribute("r", r.status === "rec" || r.status === "watch" ? 3.4 : 2.4);
+      g.appendChild(b); blips.set(r.mint, b);
+      if (!radarFirst) {
+        const pg = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        pg.setAttribute("class", "ping"); pg.setAttribute("cx", x); pg.setAttribute("cy", y); pg.setAttribute("r", 2.4);
+        $("#pings").appendChild(pg); setTimeout(() => pg.remove(), 1500);
+      }
+    }
+    b.setAttribute("class", "blip " + r.status); b.setAttribute("cx", x); b.setAttribute("cy", y);
+    b.innerHTML = `<title>${esc(r.sym)} · ${esc(STATUS[r.status] || r.status)}</title>`;
+  }
+  for (const [m, b] of blips) if (!live.has(m)) { b.remove(); blips.delete(m); }
+  // feed of the latest graduations
+  const recent = rs.slice(0, 8);
+  $("#feed").innerHTML = recent.length ? '<div class="ftitle">Latest graduations</div>' + recent.map((r) => {
+    const fresh = !radarFirst && !feedSeen.has(r.mint);
+    const why = r.status === "waiting" ? "passes checks · waiting for the dip" : r.status === "rec" || r.status === "watch" ? STATUS[r.status] : r.why;
+    return `<div class="frow${fresh ? " enter" : ""}" data-copy="${esc(r.mint)}"><span class="lg c-${r.status}"></span>
+      <span class="s">$${esc(r.sym)}<small>${usd(r.mcap_usd)}</small></span><span class="w">${esc(why)}</span><span class="t">${dur(r.grad_min)}</span></div>`;
+  }).join("") : '<div class="ftitle">No graduations in the last hours</div>';
+  recent.forEach((r) => feedSeen.add(r.mint));
+  radarFirst = false;
+}
+
 // ---------- page ----------
 function inTab(c) {
   if (tab === "hidden") return c.user_hidden;
@@ -350,7 +489,9 @@ function render() {
   const empty = { all: "Nothing recommended right now. Waiting for graduates that dip…", watch: "Your watchlist is empty. Tap ☆ on a coin to add it.",
                   hidden: "You haven't hidden any coin.", filtered: "No coins filtered out right now." }[tab] || "No coin in this stage right now.";
   $("#grid").innerHTML = NEEDS_ALL.includes(tab) && !state.all ? '<div class="empty">Loading…</div>' :
-    cs.length ? cs.map(card).join("") : `<div class="empty">${empty}</div>`;
+    cs.length ? cs.map(card).join("") : tab === "all" ? "" : `<div class="empty">${empty}</div>`;
+  cardsReady = true;
+  updateRadar();
   $("#log").innerHTML = state.alerts.length ? "<b>Alerts</b> · tap one to copy its CA" + state.alerts.slice(-15).reverse().map((a) =>
     `<div data-copy="${esc(a.mint)}">${new Date(a.ts * 1000).toLocaleTimeString()} · ${a.kind === "entry" ? "🟢" : "🔔"} ${esc(a.text)}</div>`).join("") : "";
   const last = state.alerts[state.alerts.length - 1];
@@ -462,13 +603,20 @@ $("#loginform").onsubmit = async (e) => {
   } catch (e) { showLogin("No connection to the terminal"); }
 };
 $("#lock").innerHTML = ic("lock");
-$("#lock").onclick = () => { dropToken(); state = null; $("#grid").innerHTML = ""; $("#log").innerHTML = ""; $("#latest").classList.remove("show"); renderTabs(); showLogin(); };
+$("#lock").onclick = () => { dropToken(); state = null; $("#grid").innerHTML = ""; $("#radar").hidden = true; $("#log").innerHTML = ""; $("#latest").classList.remove("show"); renderTabs(); showLogin(); };
 const soundLabel = () => { $("#sound").innerHTML = ic(soundOn ? "bell" : "belloff") + `<span>${soundOn ? "Sound on" : "Sound off"}</span>`; $("#sound").classList.toggle("on", soundOn); };
 $("#sound").onclick = () => {
   soundOn = !soundOn;
   if (soundOn && !audio) audio = new (window.AudioContext || window.webkitAudioContext)();
   if ("Notification" in window && Notification.permission === "default") Notification.requestPermission();
   soundLabel(); if (soundOn) beep("new");
+};
+$("#testpush").innerHTML = ic("phone") + "<span>Test push</span>";
+$("#testpush").onclick = async () => {
+  try {
+    const r = await fetch("/api/testpush", { method: "POST", headers: { "X-Sweden-Token": token } });
+    const j = await r.json(); toast(j.msg || "failed", !!j.ok);
+  } catch (e) { toast("No connection", false); }
 };
 $("#axcancel").onclick = () => $("#ax").classList.remove("show");
 $("#axform").onsubmit = async (e) => {
