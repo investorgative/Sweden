@@ -39,6 +39,7 @@ AXIOM_FILE = os.path.join(R.DATA, "axiom_checks.jsonl")
 PREFS_FILE = os.path.join(R.DATA, "terminal_prefs.json")
 PASSKEY_FILE = os.path.join(HERE, "..", "terminal_passkey")
 TOKEN_DAYS = 30
+COPY_MATCHES = 6                         # earlier same-name coins kept per copied coin
 AXIOM_FIELDS = ("top10", "dev", "snipers", "insiders", "bundlers", "holders")
 LOCKOUT = {5: 60, 6: 300, 7: 900}        # wrong passkeys from one address -> seconds locked (then 1 h each)
 GLOBAL_FAILS = 30                        # wrong passkeys per hour from all addresses together -> lock 15 min
@@ -183,6 +184,7 @@ class Coin:
         self.price = None
         self.meta = None
         self.pool = None
+        self.copy_of = []                           # (mint, launch ts) of earlier coins with the same name / ticker
         self.seen_visible = False
         self.entries = 0
         self.entry_armed = True                     # an entry alert needs a new low (or top) since the last one
@@ -205,6 +207,11 @@ def chart(c, now, n=90):
         if close is not None:
             out.append((round(end - t0), close * 1e6, (hi or close) * 1e6, (lo or close) * 1e6))
     return out
+
+
+def fetch_json(url):
+    return json.load(urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0",
+                                                                                 "Accept": "application/json"}), timeout=8))
 
 
 def status(c, vis, why, prefs):
@@ -263,6 +270,7 @@ class Terminal:
     def __init__(self, a):
         self.a = a
         self.prefs = Prefs()
+        self.orig_cache = {}
         self.coins = {}
         self.creators = collections.defaultdict(list)
         self.names = {}
@@ -308,11 +316,13 @@ class Terminal:
             prior = sum(1 for t in hist if ts - t < 86400)
             hist.append(ts)
             keys = {("n", name), ("s", sym)}
-            copy = any(k in self.names and ts - self.names[k] < 3 * 86400 for k in keys)
+            earlier = {m: t for k in keys for t, m in self.names.get(k, ()) if 0 <= ts - t < 3 * 86400 and m != mint}
             for k in keys:
-                self.names.setdefault(k, ts)
+                self.names.setdefault(k, []).append((ts, mint))
             if not history_only and not r[12] and ts >= time.time() - self.a.max_age - 1800:
-                self.coins[mint] = Coin(r, prior, copy)
+                self.coins[mint] = Coin(r, prior, bool(earlier))
+                e = sorted(earlier.items(), key=lambda x: x[1])         # the earliest ones are the likely originals
+                self.coins[mint].copy_of = e if len(e) <= COPY_MATCHES else e[:2] + e[-(COPY_MATCHES - 2):]
             return
         c = self.coins.get(mint)
         if c is None:
@@ -445,11 +455,14 @@ class Terminal:
 
     def test_push(self):
         """(sent?, message) - a test notification from the page's button."""
+        with self.lock:                             # a test alert: every open page flashes and beeps
+            self.alert_id += 1
+            self.alerts.append(dict(id=self.alert_id, kind="test", mint="", text="Test alert", ts=time.time()))
         topic = os.environ.get("SWEDEN_NTFY_TOPIC")
         if not topic:
-            return False, "push is off: start with SWEDEN_NTFY_TOPIC=<your topic> ./terminal.sh"
+            return False, "test alert shown - push is off (start with SWEDEN_NTFY_TOPIC=<topic> ./terminal.sh)"
         ok = self.push(topic, "test", None, "Test from the Sweden terminal - push works")
-        return ok, "test push sent - check your phone" if ok else "sending failed (see logs/terminal.log)"
+        return ok, "test alert + push sent - check your phone" if ok else "push failed (see logs/terminal.log)"
 
     # ---------- background ----------
     def meta_worker(self):
@@ -494,10 +507,52 @@ class Terminal:
                         self.creators[k] = [t for t in self.creators[k] if t >= time.time() - 86400]
                         if not self.creators[k]:
                             del self.creators[k]
-                    self.names = {k: t for k, t in self.names.items() if t >= time.time() - HISTORY_S}
+                    cut = time.time() - HISTORY_S
+                    self.names = {k: v for k, v in ((k, [x for x in v if x[0] >= cut]) for k, v in self.names.items()) if v}
                     self.tails = {f: t for f, t in self.tails.items() if os.path.exists(f)}
 
     # ---------- API ----------
+    def original(self, mint):
+        """Earlier coins with the same name / ticker as a copied coin: mcap, 24 h volume, liquidity (DexScreener, free)
+        and a 15-min chart of the biggest one (GeckoTerminal, free). Cached for a minute per coin."""
+        hit = self.orig_cache.get(mint)
+        if hit and time.time() - hit[0] < 60:
+            return hit[1]
+        with self.lock:
+            c = self.coins.get(mint)
+            matches = list(c.copy_of) if c else []
+        out = dict(matches=[], chart=[], error=None)
+        if not matches:
+            return out
+        try:
+            pairs = fetch_json("https://api.dexscreener.com/tokens/v1/solana/" + ",".join(m for m, _ in matches))
+        except Exception as e:
+            pairs, out["error"] = [], f"DexScreener not reachable ({e.__class__.__name__})"
+        best = {}
+        for p in pairs or []:
+            m = (p.get("baseToken") or {}).get("address")
+            if m and ((p.get("liquidity") or {}).get("usd") or 0) >= ((best.get(m) or {}).get("liquidity") or {}).get("usd", -1):
+                best[m] = p
+        for m, ts in matches:
+            p = best.get(m) or {}
+            bt = p.get("baseToken") or {}
+            out["matches"].append(dict(mint=m, launched_h=(time.time() - ts) / 3600, name=bt.get("name"),
+                                       sym=bt.get("symbol"), mcap=p.get("marketCap"),
+                                       vol24=(p.get("volume") or {}).get("h24"), liq=(p.get("liquidity") or {}).get("usd"),
+                                       change24=(p.get("priceChange") or {}).get("h24"), pair=p.get("pairAddress"),
+                                       dex=p.get("dexId")))
+        out["matches"].sort(key=lambda x: -(x["mcap"] or 0))
+        top = out["matches"][0]
+        if top["pair"]:
+            try:
+                d = fetch_json(f"https://api.geckoterminal.com/api/v2/networks/solana/pools/{top['pair']}/ohlcv/minute"
+                               f"?aggregate=15&limit=288")
+                out["chart"] = sorted((r[0], r[4] * 1e9) for r in d["data"]["attributes"]["ohlcv_list"])
+            except Exception:
+                pass
+        self.orig_cache[mint] = (time.time(), out)
+        return out
+
     def axiom_check(self, mint, vals):
         """Store what Axiom shows for a coin next to our live variants at the same moment (data/axiom_checks.jsonl)."""
         with self.lock:
@@ -534,6 +589,7 @@ class Terminal:
                 out.append(dict(
                     mint=c.mint, pool=c.pool, name=c.name, sym=c.sym, stage=c.stage, visible=vis, hidden=why,
                     watched=c.mint in self.prefs.get("watch"), user_hidden=c.mint in self.prefs.get("hide"),
+                    copy_of=len(c.copy_of),
                     mayhem=bool(c.flag), age_min=(now - c.ts) / 60, grad_min=(now - c.grad_ts) / 60,
                     mcap_usd=self.mcap_usd(c), mcap_sol=c.price * 1e6,
                     dd=1 - c.price / c.peak, from_low=(c.price / c.low - 1) if c.low else None,
@@ -583,6 +639,11 @@ def serve(t, port):
             u = urllib.parse.urlparse(self.path)
             if u.path == "/":
                 self.send(200, open(page, "rb").read(), "text/html; charset=utf-8")
+            elif u.path == "/api/original":
+                if not gate.token_ok(self.headers.get("X-Sweden-Token")):
+                    return self.send(401, b'{"error":"locked"}', "application/json")
+                m = urllib.parse.parse_qs(u.query).get("mint", [""])[0][:64]
+                self.send(200, json.dumps(t.original(m)).encode(), "application/json")
             elif u.path == "/api/state":
                 if not gate.token_ok(self.headers.get("X-Sweden-Token")):
                     return self.send(401, b'{"error":"locked"}', "application/json")

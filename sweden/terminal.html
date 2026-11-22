@@ -100,6 +100,41 @@
   .c-rec { background: var(--green); } .c-watch { background: var(--yellow); } .c-waiting { background: var(--cyan); }
   .c-filtered { background: var(--red); } .c-mayhem { background: var(--purple); } .c-dead { background: var(--faint); }
 
+  /* red alarm flash over everything (clicks pass through) */
+  #flash { position: fixed; inset: 0; z-index: 7; pointer-events: none; opacity: 0;
+           background: radial-gradient(ellipse at center, rgba(236,57,122,.06) 30%, rgba(236,57,122,.42) 100%);
+           box-shadow: inset 0 0 120px 30px rgba(236,57,122,.55); }
+  #flash.on { animation: alarm 2.8s ease-out; }
+  #flash.static { opacity: .75; }
+  @keyframes alarm { 0% { opacity: 0; } 6% { opacity: 1; } 24% { opacity: .15; } 36% { opacity: 1; } 56% { opacity: .15; }
+                     68% { opacity: .9; } 100% { opacity: 0; } }
+
+  /* search */
+  #search { display: none; position: relative; margin: 0 0 12px; }
+  #search.show { display: block; }
+  #search input { width: 100%; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 10px;
+                  padding: 11px 38px 11px 38px; font-size: 15px; }
+  #search input:focus { outline: none; border-color: var(--blue); }
+  #search .si { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); }
+  #search .clear { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: none; border: 0; color: var(--muted);
+                   padding: 6px 8px; font-size: 16px; display: none; }
+  #search.has .clear { display: block; }
+  #search .cnt { color: var(--faint); font-size: 12px; margin-top: 6px; }
+
+  /* original of a copied coin */
+  .orig { border-top: 1px solid var(--line); padding: 10px 0; display: flex; flex-direction: column; gap: 8px; font-size: 12px; }
+  .orig .ot { color: var(--muted); }
+  .orow { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; background: var(--panel3); border-radius: 8px; padding: 8px 10px; }
+  .orow .on { font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .orow .on small { color: var(--muted); font-weight: 400; }
+  .orow .ov { color: var(--muted); grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 12px; }
+  .orow .ov b { color: var(--text); font-weight: 600; }
+  .orow .ol { display: flex; gap: 6px; }
+  .orow .ol a, .orow .ol button { font-size: 11px; padding: 3px 7px; border-radius: 6px; background: var(--panel2); border: 1px solid var(--line);
+                                   color: var(--muted); text-decoration: none; }
+  .orow.top { outline: 1px solid rgba(82,111,255,.5); }
+  svg.ochart { width: 100%; height: 110px; display: block; background: var(--panel3); border-radius: 8px; }
+
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation: none !important; transition: none !important; }
   }
@@ -234,6 +269,7 @@
   <div class="tabs" id="tabs"></div>
 </header>
 <div id="toast"></div>
+<div id="flash"></div>
 <div id="ax"><form id="axform" autocomplete="off">
   <b id="axtitle"></b>
   <div class="axgrid">
@@ -252,6 +288,8 @@
 <main>
   <div id="latest"><div class="t" id="latesttext"></div><button id="latestcopy">Copy CA</button></div>
   <p class="rules" id="rules"></p>
+  <div id="search"><span class="si"></span><input id="q" type="search" placeholder="Search name, ticker or CA" autocomplete="off"
+    spellcheck="false" aria-label="Search coins"><button class="clear" id="qclear" aria-label="Clear search">✕</button><div class="cnt" id="qcnt"></div></div>
   <div class="content">
     <section id="radar" class="hero" hidden></section>
     <div class="grid" id="grid"></div>
@@ -277,6 +315,7 @@ const P = {
   belloff: '<path d="M3 3l18 18M8.7 3.7A6 6 0 0 1 18 8c0 3 .5 5 1.2 6.4M17 17H3s3-2 3-9c0-.5 0-1 .2-1.5M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',
   lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
   phone: '<rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/>',
 };
 const ic = (n) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${P[n]}</svg>`;
@@ -328,6 +367,46 @@ function chart(c) {
   </svg>
   <span class="clabel tl">top ${usd(c.peak * sol)}</span>${c.low ? `<span class="clabel bl">low ${usd(c.low * sol)}</span>` : ""}
   <span class="clabel br">${dur(c.grad_min)} since graduation</span></div>`;
+}
+
+// ---------- original of a copied coin (loaded when its details are opened) ----------
+const origCache = new Map(), origPending = new Set();
+function loadOrig(mint) {
+  const hit = origCache.get(mint);
+  if (origPending.has(mint) || (hit && Date.now() - hit.t < 60000)) return;
+  origPending.add(mint);
+  fetch("/api/original?mint=" + encodeURIComponent(mint), { headers: { "X-Sweden-Token": token } })
+    .then((r) => r.json()).then((d) => origCache.set(mint, { t: Date.now(), d }))
+    .catch(() => origCache.set(mint, { t: Date.now(), d: { matches: [], chart: [], error: "no connection" } }))
+    .finally(() => { origPending.delete(mint); render(); });
+}
+function lineChart(pts) {
+  if (!pts || pts.length < 2) return "";
+  const W = 400, H = 110, L = Math.log, ys = pts.map((q) => q[1]).filter((v) => v > 0);
+  if (ys.length < 2) return "";
+  const x0 = pts[0][0], x1 = pts[pts.length - 1][0], y0 = L(Math.min(...ys)), y1 = L(Math.max(...ys));
+  const X = (x) => ((x - x0) / ((x1 - x0) || 1)) * (W - 8) + 4, Y = (y) => H - 8 - ((L(Math.max(y, 1e-9)) - y0) / ((y1 - y0) || 1)) * (H - 16);
+  const line = pts.map((q, i) => (i ? "L" : "M") + X(q[0]).toFixed(1) + " " + Y(q[1]).toFixed(1)).join(" ");
+  return `<svg class="ochart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><path d="${line} L${X(x1)} ${H} L${X(x0)} ${H} Z" fill="rgba(82,111,255,.15)"/>` +
+    `<path d="${line}" fill="none" stroke="#526fff" stroke-width="1.8" vector-effect="non-scaling-stroke"/></svg>`;
+}
+function origBlock(c) {
+  if (openDetails.has(c.mint)) loadOrig(c.mint);
+  const hit = origCache.get(c.mint);
+  const head = `<div class="ot">Copy: ${c.copy_of} earlier coin${c.copy_of === 1 ? "" : "s"} with the same name or ticker (last 72 h)</div>`;
+  if (!hit) return `<div class="orig">${head}<div class="ot">Loading…</div></div>`;
+  const d = hit.d, ms = d.matches || [];
+  const rows = ms.map((o, i) => {
+    const ax = "https://axiom.trade/meme/" + (o.pair || o.mint) + "?chain=sol";
+    const ch = o.change24 == null ? "" : `<span>24h <b class="${o.change24 >= 0 ? "green" : "red"}">${o.change24 >= 0 ? "+" : ""}${o.change24.toFixed(0)}%</b></span>`;
+    return `<div class="orow${i === 0 && o.mcap ? " top" : ""}"><span class="on">${esc(o.name || short(o.mint))} <small>$${esc(o.sym || "?")} · launched ${dur(o.launched_h * 60)} ago</small></span>
+      <span class="ol"><button data-copy="${esc(o.mint)}">Copy CA</button><a href="${esc(ax)}" target="_blank" rel="noopener noreferrer">Axiom</a></span>
+      <span class="ov num"><span>mcap <b>${usd(o.mcap)}</b></span><span>vol 24h <b>${usd(o.vol24)}</b></span><span>liq <b>${usd(o.liq)}</b></span>${ch}
+      ${o.mcap == null ? "<span>not listed on DexScreener</span>" : ""}</span></div>`;
+  }).join("");
+  const top = ms[0];
+  const chartHtml = d.chart && d.chart.length > 1 ? `<div class="ot">Chart of the biggest one ($${esc(top.sym || "?")}, mcap, 15-min, up to 3 days):</div>${lineChart(d.chart)}` : "";
+  return `<div class="orig">${head}${d.error ? `<div class="ot red">${esc(d.error)}</div>` : ""}${rows}${chartHtml}</div>`;
 }
 
 // ---------- card ----------
@@ -391,6 +470,7 @@ function card(c) {
       <span>Dev sold</span><b>${ch.dev_sold ? "yes" : "no"}</b>
       <span>Graduated</span><b>${dur(c.grad_min)} ago</b>
     </div>
+    ${c.copy_of ? origBlock(c) : ""}
     ${m.description ? `<div class="desc">${esc(m.description)}</div>` : ""}
     <button class="iconbtn axbtn" data-ax="${esc(c.mint)}" data-sym="${esc(c.sym)}">Enter Axiom's numbers ✎</button>
   </details>
@@ -463,7 +543,14 @@ function updateRadar() {
 }
 
 // ---------- page ----------
+const SEARCH_TABS = ["filtered", "hidden", "watch"];
+let query = "";
+function matches(c) {
+  if (!query || !SEARCH_TABS.includes(tab)) return true;
+  return [c.name, c.sym, c.mint].some((v) => String(v || "").toLowerCase().includes(query));
+}
 function inTab(c) {
+  if (!matches(c)) return false;
   if (tab === "hidden") return c.user_hidden;
   if (c.user_hidden) return false;
   if (tab === "filtered") return !c.visible;
@@ -485,11 +572,15 @@ function render() {
   $("#rules").textContent = `Recommended: graduated pump.fun coins ≤ ${s.max_age_h} h old, passing the on-chain checks (bundle ≤ ${pct(s.bundle_max, 0)}), ` +
     `mcap ≤ ${usd(s.max_mcap_usd)}, at least ${pct(s.show_dd, 0)} below their top. Watchlist coins always show. SOL $${state.sol_usd.toFixed(0)}.`;
   const cs = state.coins.filter(inTab);
+  const srch = SEARCH_TABS.includes(tab);
+  $("#search").classList.toggle("show", srch);
+  $("#qcnt").textContent = srch && query ? `${cs.length} match${cs.length === 1 ? "" : "es"}` : "";
   cs.sort((a, b) => (b.watched - a.watched) || (b.visible - a.visible) || (ORDER[a.stage] - ORDER[b.stage]) || (a.age_min - b.age_min));
-  const empty = { all: "Nothing recommended right now. Waiting for graduates that dip…", watch: "Your watchlist is empty. Tap ☆ on a coin to add it.",
+  const empty = query && srch ? `No coin matches "${query}".` : null;
+  const emptyTab = { all: "Nothing recommended right now. Waiting for graduates that dip…", watch: "Your watchlist is empty. Tap ☆ on a coin to add it.",
                   hidden: "You haven't hidden any coin.", filtered: "No coins filtered out right now." }[tab] || "No coin in this stage right now.";
   $("#grid").innerHTML = NEEDS_ALL.includes(tab) && !state.all ? '<div class="empty">Loading…</div>' :
-    cs.length ? cs.map(card).join("") : tab === "all" ? "" : `<div class="empty">${empty}</div>`;
+    cs.length ? cs.map(card).join("") : tab === "all" ? "" : `<div class="empty">${esc(empty || emptyTab)}</div>`;
   cardsReady = true;
   updateRadar();
   $("#log").innerHTML = state.alerts.length ? "<b>Alerts</b> · tap one to copy its CA" + state.alerts.slice(-15).reverse().map((a) =>
@@ -498,7 +589,7 @@ function render() {
   $("#latest").classList.toggle("show", !!last);
   if (last) {
     $("#latesttext").textContent = `${new Date(last.ts * 1000).toLocaleTimeString()} · ${last.kind === "entry" ? "🟢" : "🔔"} ${last.text}`;
-    $("#latestcopy").dataset.copy = last.mint;
+    $("#latestcopy").dataset.copy = last.mint; $("#latestcopy").hidden = !last.mint;
   }
 }
 
@@ -513,6 +604,12 @@ function beep(kind) {
   });
 }
 
+const reduceMotion = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+function flash() {
+  const f = $("#flash");
+  if (reduceMotion) { f.classList.add("static"); clearTimeout(f._t); f._t = setTimeout(() => f.classList.remove("static"), 2200); return; }
+  f.classList.remove("on"); void f.offsetWidth; f.classList.add("on");   // restart the animation
+}
 function handleAlerts() {
   const as = state.alerts;
   const maxId = as.length ? as[as.length - 1].id : 0;
@@ -520,9 +617,10 @@ function handleAlerts() {
   const fresh = as.filter((a) => a.id > lastAlert);
   lastAlert = Math.max(lastAlert, maxId);
   if (!fresh.length) return;
+  flash();
   beep(fresh.some((a) => a.kind === "entry") ? "entry" : "new");
   if ("Notification" in window && Notification.permission === "granted")
-    fresh.forEach((a) => new Notification(a.kind === "entry" ? "Entry signal" : "New coin to check", { body: a.text }));
+    fresh.forEach((a) => new Notification({ entry: "Entry signal", test: "Test alert" }[a.kind] || "New coin to check", { body: a.text }));
   document.title = "(" + fresh.length + ") Sweden terminal";
   setTimeout(() => (document.title = "Sweden terminal"), 8000);
 }
@@ -588,7 +686,8 @@ document.addEventListener("click", (e) => {
 });
 document.addEventListener("toggle", (e) => {
   const d = e.target; if (!d.dataset || !d.dataset.d) return;
-  d.open ? openDetails.add(d.dataset.d) : openDetails.delete(d.dataset.d);
+  if (d.open) { openDetails.add(d.dataset.d); if (!origCache.has(d.dataset.d) && d.querySelector(".orig")) loadOrig(d.dataset.d); }
+  else openDetails.delete(d.dataset.d);
 }, true);
 
 $("#loginform").onsubmit = async (e) => {
@@ -615,9 +714,12 @@ $("#testpush").innerHTML = ic("phone") + "<span>Test push</span>";
 $("#testpush").onclick = async () => {
   try {
     const r = await fetch("/api/testpush", { method: "POST", headers: { "X-Sweden-Token": token } });
-    const j = await r.json(); toast(j.msg || "failed", !!j.ok);
+    const j = await r.json(); toast(j.msg || "failed", !!j.ok); tick();
   } catch (e) { toast("No connection", false); }
 };
+$("#search .si").innerHTML = ic("search");
+$("#q").addEventListener("input", (e) => { query = e.target.value.trim().toLowerCase(); $("#search").classList.toggle("has", !!query); render(); });
+$("#qclear").onclick = () => { $("#q").value = ""; query = ""; $("#search").classList.remove("has"); render(); $("#q").focus(); };
 $("#axcancel").onclick = () => $("#ax").classList.remove("show");
 $("#axform").onsubmit = async (e) => {
   e.preventDefault();
