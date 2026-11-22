@@ -22,5 +22,9 @@ for i in $(seq 1 30); do
   [ -n "$URL" ] && break; sleep 1
 done
 echo "terminal: http://$(hostname -I | awk '{print $1}'):8750 (home network)   ${URL:-tunnel link not ready yet - see logs/tunnel.log}"
+# the link changes on every start: send it to the phone
+if [ -n "${URL:-}" ] && [ -n "${SWEDEN_NTFY_TOPIC:-}" ]; then
+  curl -s -m 10 -H "Title: Sweden terminal started" -H "Click: $URL" -d "New link: $URL" "https://ntfy.sh/$SWEDEN_NTFY_TOPIC" >/dev/null || true
+fi
 echo "passkey: in $DIR/terminal_passkey (cat it on the Pi)"
 echo "stop: tmux kill-session -t SwedenTerminal"
