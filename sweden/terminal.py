@@ -473,12 +473,16 @@ class Terminal:
 
     def state(self, show_all):
         now = time.time()
-        out = []
+        out, counts = [], {"filtered": 0, "hidden": 0}
         with self.lock:
             for c in self.coins.values():
                 if c.grad_ts is None or not c.pool_ok or c.price is None:
                     continue
                 vis, why = self.visible(c)
+                if c.mint in self.prefs.get("hide"):
+                    counts["hidden"] += 1
+                elif not vis:
+                    counts["filtered"] += 1
                 if not vis and not show_all:
                     continue
                 f = c.feat or {}
@@ -497,7 +501,7 @@ class Terminal:
                                 traders=f.get("traders")),
                     live=c.H.metrics(), meta=c.meta or {}))
             alerts = list(self.alerts)
-        return dict(now=now, live=self.live, sol_usd=self.usd, coins=out, alerts=alerts,
+        return dict(now=now, live=self.live, sol_usd=self.usd, coins=out, alerts=alerts, all=show_all, counts=counts,
                     settings=dict(max_age_h=self.a.max_age / 3600, max_mcap_usd=self.a.max_mcap_usd, bundle_max=self.a.bundle_max,
                                   top10_max=R.FILTER["top10_pct"], sniper_max=R.FILTER["sniper_pct"],
                                   dev_max=R.FILTER["dev_pct"], prior_max=R.FILTER["max_prior_launches"],

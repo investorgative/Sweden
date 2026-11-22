@@ -212,6 +212,7 @@ const ORDER = { entry: 0, bounce: 1, zone: 2, dip: 3, top: 4, dead: 5 };
 const LABEL = { entry: "Entry", bounce: "Bounce", zone: "In zone", dip: "Dip", top: "Near top", dead: "Dead" };
 const TABS = [["all", "Recommended"], ["watch", "★ Watchlist"], ["entry", "Entry"], ["bounce", "Bounce"], ["zone", "Zone"],
               ["dip", "Dip"], ["filtered", "Filtered out"], ["hidden", "Hidden by me"]];
+const NEEDS_ALL = ["filtered", "hidden"];             // tabs that need the coins the filter hides
 let tab = "all", soundOn = false, audio = null, lastAlert = null, state = null, token = null;
 const openDetails = new Set();
 try { token = localStorage.getItem("swedenToken"); tab = localStorage.getItem("swedenTab") || "all"; } catch (e) {}
@@ -335,7 +336,7 @@ function inTab(c) {
 function renderTabs() {
   const cs = state ? state.coins : [];
   const count = (t) => { const keep = tab; tab = t; const n = cs.filter(inTab).length; tab = keep; return n; };
-  $("#tabs").innerHTML = TABS.map(([k, t]) => `<button class="tab${k === tab ? " on" : ""}" data-tab="${k}">${t}<span class="n">${state && (k === tab || !["filtered", "hidden"].includes(k)) ? count(k) : ""}</span></button>`).join("");
+  $("#tabs").innerHTML = TABS.map(([k, t]) => `<button class="tab${k === tab ? " on" : ""}" data-tab="${k}">${t}<span class="n">${!state ? "" : NEEDS_ALL.includes(k) ? (state.counts || {})[k] ?? "" : count(k)}</span></button>`).join("");
 }
 
 function render() {
@@ -348,7 +349,8 @@ function render() {
   cs.sort((a, b) => (b.watched - a.watched) || (b.visible - a.visible) || (ORDER[a.stage] - ORDER[b.stage]) || (a.age_min - b.age_min));
   const empty = { all: "Nothing recommended right now. Waiting for graduates that dip…", watch: "Your watchlist is empty. Tap ☆ on a coin to add it.",
                   hidden: "You haven't hidden any coin.", filtered: "No coins filtered out right now." }[tab] || "No coin in this stage right now.";
-  $("#grid").innerHTML = cs.length ? cs.map(card).join("") : `<div class="empty">${empty}</div>`;
+  $("#grid").innerHTML = NEEDS_ALL.includes(tab) && !state.all ? '<div class="empty">Loading…</div>' :
+    cs.length ? cs.map(card).join("") : `<div class="empty">${empty}</div>`;
   $("#log").innerHTML = state.alerts.length ? "<b>Alerts</b> · tap one to copy its CA" + state.alerts.slice(-15).reverse().map((a) =>
     `<div data-copy="${esc(a.mint)}">${new Date(a.ts * 1000).toLocaleTimeString()} · ${a.kind === "entry" ? "🟢" : "🔔"} ${esc(a.text)}</div>`).join("") : "";
   const last = state.alerts[state.alerts.length - 1];
@@ -389,7 +391,7 @@ function dropToken() { token = null; try { localStorage.removeItem("swedenToken"
 
 async function tick() {
   if (!token) return showLogin();
-  const all = tab === "filtered" || tab === "hidden" || tab === "watch";
+  const all = NEEDS_ALL.includes(tab);
   try {
     const r = await fetch("/api/state" + (all ? "?all=1" : ""), { cache: "no-store", headers: { "X-Sweden-Token": token } });
     if (r.status === 401) { dropToken(); return showLogin("Please enter the passkey"); }
