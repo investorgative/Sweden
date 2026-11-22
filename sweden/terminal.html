@@ -150,15 +150,22 @@ const safeUrl = (u) => /^https?:\/\//i.test(u || "") ? u : (u && /^ipfs:\/\//i.t
 const xUrl = (t) => !t ? "" : /^https?:/i.test(t) ? t : "https://x.com/" + t.replace(/^@/, "");
 
 function chart(c) {
+  // p: [seconds since graduation, close, high, low]; log scale so a -80 % drop doesn't flatten the rest
   const p = c.pts; if (!p || p.length < 2) return '<svg class="chart"></svg>';
-  const W = 300, H = 90, xs = p.map((q) => q[0]), ys = p.map((q) => q[1]);
-  const x0 = Math.min(...xs), x1 = Math.max(...xs) || 1, y0 = Math.min(...ys, c.low ?? Infinity), y1 = Math.max(...ys, c.peak);
-  const X = (x) => ((x - x0) / ((x1 - x0) || 1)) * (W - 8) + 4, Y = (y) => H - 6 - ((y - y0) / ((y1 - y0) || 1)) * (H - 12);
-  const path = p.map((q, i) => (i ? "L" : "M") + X(q[0]).toFixed(1) + " " + Y(q[1]).toFixed(1)).join(" ");
+  const W = 300, H = 90, L = Math.log;
+  const x1 = p[p.length - 1][0] || 1;
+  const ys = p.flatMap((q) => [q[2], q[3]]).concat([c.peak, c.low ?? c.peak]).filter((v) => v > 0);
+  const y0 = L(Math.min(...ys)), y1 = L(Math.max(...ys));
+  const X = (x) => (x / x1) * (W - 8) + 4, Y = (y) => H - 6 - ((L(y) - y0) / ((y1 - y0) || 1)) * (H - 12);
+  const line = p.map((q, i) => (i ? "L" : "M") + X(q[0]).toFixed(1) + " " + Y(q[1]).toFixed(1)).join(" ");
+  const band = p.map((q, i) => (i ? "L" : "M") + X(q[0]).toFixed(1) + " " + Y(q[2]).toFixed(1)).join(" ") + " " +
+    p.slice().reverse().map((q) => "L" + X(q[0]).toFixed(1) + " " + Y(q[3]).toFixed(1)).join(" ") + " Z";
   const col = getComputedStyle(document.documentElement).getPropertyValue("--" + (c.stage === "top" ? "dead" : c.stage)).trim();
-  let lines = `<line x1="4" x2="${W - 4}" y1="${Y(c.peak)}" y2="${Y(c.peak)}" stroke="#8b98a8" stroke-dasharray="3 3" stroke-width="1"/>`;
-  if (c.low) lines += `<line x1="4" x2="${W - 4}" y1="${Y(c.low)}" y2="${Y(c.low)}" stroke="#e8743b" stroke-dasharray="3 3" stroke-width="1"/>`;
-  return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${lines}<path d="${path}" fill="none" stroke="${col}" stroke-width="1.8" vector-effect="non-scaling-stroke"/></svg>`;
+  let lines = `<line x1="4" x2="${W - 4}" y1="${Y(c.peak)}" y2="${Y(c.peak)}" stroke="#8b98a8" stroke-dasharray="3 3" stroke-width="1" vector-effect="non-scaling-stroke"/>`;
+  if (c.low) lines += `<line x1="4" x2="${W - 4}" y1="${Y(c.low)}" y2="${Y(c.low)}" stroke="#e8743b" stroke-dasharray="3 3" stroke-width="1" vector-effect="non-scaling-stroke"/>`;
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${lines}` +
+    `<path d="${band}" fill="${col}" fill-opacity="0.15" stroke="none"/>` +
+    `<path d="${line}" fill="none" stroke="${col}" stroke-width="1.8" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>`;
 }
 
 function liveLine(c) {

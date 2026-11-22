@@ -176,13 +176,32 @@ class Coin:
         self.H = Holders(r[0], {creator, signer})
         self.feat, self.fails = None, None
         self.grad_ts, self.pool_ok = None, False
-        self.pts = []                               # (ts, price) after graduation
+        self.pts = {}                               # 5-s bucket -> [slot of close, close, high, low] after graduation
+        self.last_slot = 0
         self.peak = 0.0; self.low = self.hi = None; self.mode = "top"; self.stage = "top"
         self.price = None
         self.meta = None
         self.seen_visible = False
         self.entries = 0
         self.last_trade = None
+
+
+def chart(c, now, n=90):
+    """Price since graduation in n even time steps: [seconds since graduation, close, high, low] (mcap in SOL);
+    a step without trades repeats the last close."""
+    t0 = c.grad_ts
+    w = max(60.0, now - t0) / n
+    keys = sorted(c.pts)
+    out, close, j = [], None, 0
+    for k in range(n):
+        end, hi, lo = t0 + (k + 1) * w, None, None
+        while j < len(keys) and (keys[j] * 5 < end or k == n - 1):
+            _, cl, h, l = c.pts[keys[j]]
+            close, hi, lo = cl, h if hi is None else max(hi, h), l if lo is None else min(lo, l)
+            j += 1
+        if close is not None:
+            out.append((round(end - t0), close * 1e6, (hi or close) * 1e6, (lo or close) * 1e6))
+    return out
 
 
 class Terminal:
@@ -269,15 +288,20 @@ class Terminal:
             B = pb - base if buy else pb + base     # event reserves are pre-trade
             Q = (pq + quote if buy else pq - quote) + vq
             if B > 0 and Q > 0:
-                self.price_update(c, Q / B, r[3])
+                self.price_update(c, Q / B, r[3], r[0])
 
-    def price_update(self, c, p, ts):
+    def price_update(self, c, p, ts, slot):
         a = self.a
-        c.price, c.last_trade = p, ts
-        if not c.pts or ts - c.pts[-1][0] >= 5 or abs(p / c.pts[-1][1] - 1) > 0.03:
-            c.pts.append((ts, p))
+        b = c.pts.get(ts // 5)                          # swaps arrive over several connections, not in order
+        if b is None:
+            c.pts[ts // 5] = [slot, p, p, p]
         else:
-            c.pts[-1] = (ts, p)
+            b[2], b[3] = max(b[2], p), min(b[3], p)
+            if slot >= b[0]:
+                b[0], b[1] = slot, p
+        if slot < c.last_slot:                          # older than what we already have: chart only
+            return
+        c.last_slot, c.price, c.last_trade = slot, p, ts
         if p > c.peak:
             c.peak, c.low, c.hi, c.mode = p, None, None, "top"
         dd = 1 - p / c.peak
@@ -425,10 +449,6 @@ class Terminal:
                 vis, why = self.visible(c)
                 if not vis and not show_all:
                     continue
-                pts = c.pts
-                if len(pts) > 120:
-                    step = len(pts) / 120
-                    pts = [pts[int(i * step)] for i in range(120)] + [pts[-1]]
                 f = c.feat or {}
                 out.append(dict(
                     mint=c.mint, name=c.name, sym=c.sym, stage=c.stage, visible=vis, hidden=why,
@@ -436,7 +456,7 @@ class Terminal:
                     mcap_usd=self.mcap_usd(c), mcap_sol=c.price * 1e6,
                     dd=1 - c.price / c.peak, from_low=(c.price / c.low - 1) if c.low else None,
                     last_trade_s=now - c.last_trade if c.last_trade else None, entries=c.entries,
-                    pts=[(t - c.grad_ts, p * 1e6) for t, p in pts], peak=c.peak * 1e6,
+                    pts=chart(c, now), peak=c.peak * 1e6,
                     low=c.low * 1e6 if c.low else None,
                     checks=dict(top10=f.get("top10_pct"), bundle=f.get("bundle_pct"), snipers=f.get("sniper_pct"),
                                 top3_trades=f.get("top3_trade_share"), same_sizes=f.get("same_size_share"),
