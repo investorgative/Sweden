@@ -2,116 +2,167 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#07080c">
 <title>Sweden terminal</title>
 <style>
   :root {
-    --bg: #0d1117; --panel: #161b22; --panel2: #1c2330; --line: #2a3340; --text: #e6edf3; --muted: #8b98a8;
-    --dip: #d29922; --zone: #e8743b; --bounce: #3fb5e8; --entry: #2ea043; --dead: #6e7681; --danger: #f85149;
-    --accent: #58a6ff;
+    --bg: #07080c; --panel: #0f1117; --panel2: #161923; --panel3: #1d2130; --line: #222634; --text: #e9ecf5;
+    --muted: #7d8396; --faint: #4b5063; --green: #2fe3ac; --red: #ec397a; --blue: #526fff; --yellow: #f5c249;
+    --orange: #ff8a3d; --cyan: #3fc8ff; --purple: #a78bfa;
+    --dip: var(--yellow); --zone: var(--orange); --bounce: var(--cyan); --entry: var(--green); --top: var(--muted); --dead: var(--faint);
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  header { position: sticky; top: 0; z-index: 5; background: rgba(13,17,23,.96); border-bottom: 1px solid var(--line);
-           padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
-  h1 { font-size: 16px; margin: 0; letter-spacing: .3px; }
-  .status { color: var(--muted); font-size: 12px; }
-  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--dead); margin-right: 6px; }
-  .dot.live { background: var(--entry); }
-  .controls { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
-  button, .chip { background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 8px;
-                  padding: 6px 10px; font: inherit; font-size: 13px; cursor: pointer; }
-  button.on, .chip.on { border-color: var(--accent); color: var(--accent); }
-  button.warn { border-color: var(--zone); color: var(--zone); }
-  main { padding: 12px 16px 40px; max-width: 1400px; margin: 0 auto; }
-  .rules { color: var(--muted); font-size: 12px; margin: 0 0 12px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 12px; }
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: flex;
-          flex-direction: column; gap: 8px; min-width: 0; }
-  .card.stage-entry { border-color: var(--entry); box-shadow: 0 0 0 1px var(--entry) inset; }
-  .card.hidden { opacity: .55; }
-  .top { display: flex; gap: 10px; align-items: center; min-width: 0; }
-  .img { width: 48px; height: 48px; border-radius: 10px; background: var(--panel2); object-fit: cover; flex: none; }
-  .title { min-width: 0; flex: 1; }
-  .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .sym { color: var(--muted); font-size: 12px; }
-  .badge { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; text-transform: uppercase;
-           letter-spacing: .4px; flex: none; color: #0d1117; }
-  .b-dip { background: var(--dip); } .b-zone { background: var(--zone); } .b-bounce { background: var(--bounce); }
-  .b-entry { background: var(--entry); } .b-dead, .b-top { background: var(--dead); }
-  .b-mayhem { background: #a371f7; }
-  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-  .stat { background: var(--panel2); border-radius: 8px; padding: 6px 8px; min-width: 0; }
-  .stat .k { color: var(--muted); font-size: 11px; }
-  .stat .v { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .neg { color: var(--danger); }
-  svg.chart { width: 100%; height: 90px; display: block; background: var(--panel2); border-radius: 8px; }
-  .checks { display: flex; flex-wrap: wrap; gap: 4px 10px; color: var(--muted); font-size: 12px; }
-  .checks b { color: var(--text); font-weight: 600; }
-  .desc { color: var(--muted); font-size: 12px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-          overflow: hidden; }
-  .ca { display: flex; gap: 8px; align-items: center; }
-  .ca button { flex: 1; background: var(--accent); color: #0d1117; border: 0; border-radius: 10px; padding: 12px;
-               font-weight: 700; font-size: 15px; }
-  .ca button.done { background: var(--entry); }
-  .ca code { color: var(--muted); font-size: 12px; }
-  .top [data-copy] { cursor: pointer; }
-  .links { display: flex; flex-wrap: wrap; gap: 6px; }
-  .links a, .links button { font-size: 12px; padding: 5px 8px; border-radius: 7px; background: var(--panel2);
-                            border: 1px solid var(--line); color: var(--accent); text-decoration: none; }
-  .hiddenwhy { color: var(--zone); font-size: 12px; }
-  .empty { color: var(--muted); padding: 40px 0; text-align: center; }
-  #log { margin-top: 24px; color: var(--muted); font-size: 12px; }
-  #log div { padding: 2px 0; border-bottom: 1px solid var(--line); }
-  #log [data-copy] { cursor: pointer; }
-  #latest { display: none; position: sticky; top: var(--hh, 52px); z-index: 4; margin: 0 -16px 12px; padding: 8px 16px;
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.35 Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  svg.i { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* header */
+  header { position: sticky; top: 0; z-index: 5; background: rgba(7,8,12,.94); backdrop-filter: blur(8px);
+           border-bottom: 1px solid var(--line); padding: 10px 16px; }
+  .bar { display: flex; align-items: center; gap: 10px; max-width: 1500px; margin: 0 auto; }
+  .logo { font-weight: 800; font-size: 16px; letter-spacing: .2px; white-space: nowrap; }
+  .status { color: var(--muted); font-size: 12px; display: flex; align-items: center; gap: 6px; min-width: 0;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); flex: none; }
+  .dot.live { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .spacer { flex: 1; }
+  .iconbtn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; background: var(--panel2);
+             border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; font-size: 13px; color: var(--muted); }
+  .iconbtn:hover { color: var(--text); border-color: var(--panel3); }
+  .iconbtn.on { color: var(--green); border-color: rgba(47,227,172,.4); }
+  .tabs { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; max-width: 1500px; margin: 10px auto 0; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { flex: none; background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px;
+         font-size: 13px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+  .tab.on { background: var(--panel3); color: var(--text); border-color: var(--panel3); }
+  .tab .n { color: var(--faint); font-size: 12px; }
+  .tab.on .n { color: var(--muted); }
+
+  main { padding: 14px 16px 60px; max-width: 1500px; margin: 0 auto; }
+  .rules { color: var(--faint); font-size: 12px; margin: 0 0 12px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); gap: 14px; align-items: start; }
+  .empty { color: var(--muted); padding: 60px 0; text-align: center; grid-column: 1 / -1; }
+
+  /* latest alert */
+  #latest { display: none; position: sticky; top: var(--hh, 96px); z-index: 4; margin: -14px -16px 14px; padding: 8px 16px;
             background: var(--panel); border-bottom: 1px solid var(--line); align-items: center; gap: 10px; }
   #latest.show { display: flex; }
   #latest .t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
-  #latest button { flex: none; background: var(--accent); color: #0d1117; border: 0; border-radius: 10px;
-                   padding: 10px 14px; font-weight: 700; font-size: 15px; }
-  #latest button.done { background: var(--entry); }
-  #login { position: fixed; inset: 0; z-index: 10; background: var(--bg); display: none; align-items: center;
-           justify-content: center; padding: 16px; }
-  #login.show { display: flex; }
+  #latest button { flex: none; background: var(--blue); color: #fff; border: 0; border-radius: 8px; padding: 9px 14px; font-weight: 700; }
+  #latest button.done { background: var(--green); color: #07080c; }
+
+  /* card */
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: flex;
+          flex-direction: column; gap: 12px; min-width: 0; }
+  .card.stage-entry { border-color: rgba(47,227,172,.55); box-shadow: 0 0 0 1px rgba(47,227,172,.25), 0 0 24px rgba(47,227,172,.08); }
+  .card.watched { border-color: rgba(245,194,73,.45); }
+  .card.filtered { opacity: .6; }
+  .head { display: flex; gap: 12px; align-items: center; min-width: 0; }
+  .img { width: 60px; height: 60px; border-radius: 12px; background: var(--panel2); object-fit: cover; flex: none; cursor: pointer;
+         border: 1px solid var(--line); }
+  .title { flex: 1; min-width: 0; }
+  .name { font-weight: 700; font-size: 17px; display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .name span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .name .mini { background: none; border: 0; padding: 2px; color: var(--muted); display: inline-flex; }
+  .name .mini:hover { color: var(--text); }
+  .sub { color: var(--muted); font-size: 12px; display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 2px; }
+  .sub b { color: var(--text); font-weight: 600; }
+  .acts { display: flex; gap: 6px; flex: none; align-self: flex-start; }
+  .acts .iconbtn { padding: 7px; }
+  .acts .star.on { color: var(--yellow); border-color: rgba(245,194,73,.45); }
+  .acts .star.on svg { fill: var(--yellow); }
+  .badges { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .badge { font-size: 11px; font-weight: 800; padding: 3px 9px; border-radius: 999px; letter-spacing: .5px; text-transform: uppercase;
+           color: #07080c; }
+  .b-dip { background: var(--dip); } .b-zone { background: var(--zone); } .b-bounce { background: var(--bounce); }
+  .b-entry { background: var(--entry); } .b-top, .b-dead { background: var(--panel3); color: var(--muted); }
+  .b-mayhem { background: var(--purple); } .b-watch { background: rgba(245,194,73,.15); color: var(--yellow); }
+  .why { color: var(--orange); font-size: 12px; }
+
+  .copy { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; background: var(--blue); color: #fff;
+          border: 0; border-radius: 10px; padding: 13px; font-weight: 800; font-size: 16px; }
+  .copy code { font: 500 12px ui-monospace, SFMono-Regular, Menlo, monospace; opacity: .75; }
+  .copy.done { background: var(--green); color: #07080c; }
+
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .kpi { background: var(--panel2); border-radius: 10px; padding: 8px 10px; min-width: 0; }
+  .kpi .k { color: var(--muted); font-size: 11px; }
+  .kpi .v { font-weight: 700; font-size: 16px; white-space: nowrap; }
+  .red { color: var(--red); } .green { color: var(--green); } .muted { color: var(--muted); }
+
+  .chartbox { position: relative; background: var(--panel2); border-radius: 10px; overflow: hidden; }
+  svg.chart { width: 100%; height: 190px; display: block; }
+  .clabel { position: absolute; font-size: 11px; color: var(--muted); background: rgba(22,25,35,.85); padding: 1px 6px; border-radius: 6px; }
+  .clabel.tl { top: 6px; left: 6px; } .clabel.bl { bottom: 6px; left: 6px; } .clabel.br { bottom: 6px; right: 6px; }
+  .clabel.tr { top: 6px; right: 6px; }
+
+  .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .m { background: var(--panel2); border: 1px solid transparent; border-radius: 10px; padding: 9px 6px; text-align: center; min-width: 0; }
+  .m .v { display: flex; align-items: center; justify-content: center; gap: 6px; font-weight: 700; font-size: 15px; }
+  .m .l { color: var(--muted); font-size: 11px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .m.good .v { color: var(--green); } .m.bad .v { color: var(--red); } .m.bad { border-color: rgba(236,57,122,.3); }
+  .m.na .v { color: var(--faint); }
+
+  details { background: var(--panel2); border-radius: 10px; padding: 0 10px; }
+  details summary { cursor: pointer; color: var(--muted); font-size: 12px; padding: 9px 0; list-style: none; display: flex; align-items: center; gap: 6px; }
+  details summary::-webkit-details-marker { display: none; }
+  details[open] summary { color: var(--text); }
+  .dl { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; font-size: 12px; color: var(--muted); padding-bottom: 10px; }
+  .dl b { color: var(--text); font-weight: 600; text-align: right; }
+  .desc { color: var(--muted); font-size: 12px; padding-bottom: 10px; }
+  .axbtn { margin: 0 0 10px; }
+
+  .links { display: flex; flex-wrap: wrap; gap: 6px; }
+  .links a { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 7px 10px; border-radius: 8px;
+             background: var(--panel2); border: 1px solid var(--line); color: var(--muted); text-decoration: none; }
+  .links a:hover { color: var(--text); }
+  .links a.axiom { background: #fff; color: #07080c; border-color: #fff; font-weight: 800; }
+
+  #log { margin-top: 28px; color: var(--muted); font-size: 12px; }
+  #log div { padding: 5px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+
+  /* overlays */
+  #login, #ax { position: fixed; inset: 0; display: none; }
+  #login { z-index: 10; background: var(--bg); align-items: center; justify-content: center; padding: 16px; }
+  #login.show, #ax.show { display: flex; }
   #login form { width: 100%; max-width: 340px; display: flex; flex-direction: column; gap: 12px; text-align: center; }
-  #login input { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 10px;
-                 padding: 14px; font-size: 20px; text-align: center; letter-spacing: 3px; }
-  #login button { background: var(--accent); color: #0d1117; border: 0; border-radius: 10px; padding: 14px;
-                  font-weight: 700; font-size: 16px; }
-  #ax { position: fixed; inset: 0; z-index: 8; background: rgba(0,0,0,.6); display: none; align-items: flex-end;
-        justify-content: center; }
-  #ax.show { display: flex; }
-  #ax form { background: var(--panel); border: 1px solid var(--line); border-radius: 14px 14px 0 0; padding: 16px;
-             width: 100%; max-width: 480px; display: flex; flex-direction: column; gap: 12px; }
+  #login input { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 14px;
+                 font-size: 20px; text-align: center; letter-spacing: 3px; }
+  #login button { background: var(--blue); color: #fff; border: 0; border-radius: 10px; padding: 14px; font-weight: 700; font-size: 16px; }
+  #loginmsg { color: var(--red); min-height: 1.4em; font-size: 13px; }
+  #ax { z-index: 8; background: rgba(0,0,0,.65); align-items: flex-end; justify-content: center; }
+  #ax form { background: var(--panel); border: 1px solid var(--line); border-radius: 14px 14px 0 0; padding: 16px; width: 100%;
+             max-width: 480px; display: flex; flex-direction: column; gap: 12px; }
   .axgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .axgrid label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 12px; }
-  .axgrid input { background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 8px;
-                  padding: 10px; font-size: 16px; }
-  .axrow { display: flex; gap: 8px; } .axrow button { flex: 1; padding: 12px; font-weight: 700; }
-  .axrow button[type=submit] { background: var(--accent); color: #0d1117; border: 0; }
-  .axbtn { padding: 2px 8px; font-size: 12px; }
-  #toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 9; background: var(--entry);
-           color: #0d1117; font-weight: 700; padding: 10px 16px; border-radius: 10px; display: none; }
+  .axgrid input { background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 10px; font-size: 16px; }
+  .axrow { display: flex; gap: 8px; }
+  .axrow button { flex: 1; padding: 12px; font-weight: 700; border-radius: 8px; border: 1px solid var(--line); background: var(--panel2); }
+  .axrow button[type=submit] { background: var(--blue); color: #fff; border: 0; }
+  #toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 9; background: var(--green); color: #07080c;
+           font-weight: 700; padding: 10px 16px; border-radius: 10px; display: none; white-space: nowrap; }
   #toast.show { display: block; }
-  #loginmsg { color: var(--danger); min-height: 1.4em; font-size: 13px; }
-  @media (max-width: 420px) { .grid { grid-template-columns: 1fr; } .stats { grid-template-columns: repeat(2, 1fr); } }
+
+  @media (max-width: 480px) {
+    header { padding: 8px 12px; } main { padding: 12px 12px 60px; } #latest { margin: -12px -12px 12px; padding: 8px 12px; }
+    .kpis { grid-template-columns: repeat(2, 1fr); }
+    .status .long { display: none; }
+  }
 </style>
 </head>
 <body>
 <header>
-  <h1>🇸🇪 Sweden terminal</h1>
-  <span class="status"><span id="dot" class="dot"></span><span id="status">connecting…</span></span>
-  <div class="controls">
-    <button id="sound" class="warn">🔇 Enable sound</button>
-    <button data-f="all" class="on">All</button>
-    <button data-f="entry">Entry</button>
-    <button data-f="bounce">Bounce</button>
-    <button data-f="zone">Zone</button>
-    <button data-f="dip">Dip</button>
-    <button id="showall">Show hidden</button>
-    <button id="lock">🔒 Lock</button>
+  <div class="bar">
+    <div class="logo">🇸🇪 Sweden</div>
+    <div class="status"><span id="dot" class="dot"></span><span id="status">connecting…</span></div>
+    <div class="spacer"></div>
+    <button class="iconbtn" id="sound" title="Sound and notifications"></button>
+    <button class="iconbtn" id="lock" title="Lock"></button>
   </div>
+  <div class="tabs" id="tabs"></div>
 </header>
 <div id="toast"></div>
 <div id="ax"><form id="axform" autocomplete="off">
@@ -124,8 +175,8 @@
   <div class="axrow"><button type="button" id="axcancel">Cancel</button><button type="submit">Save</button></div>
 </form></div>
 <div id="login"><form id="loginform" autocomplete="off">
-  <h1>🇸🇪 Sweden terminal</h1>
-  <input id="pk" type="password" inputmode="text" autocomplete="current-password" placeholder="Passkey" aria-label="Passkey">
+  <div class="logo" style="font-size:20px">🇸🇪 Sweden terminal</div>
+  <input id="pk" type="password" autocomplete="current-password" placeholder="Passkey" aria-label="Passkey">
   <button type="submit">Unlock</button>
   <div id="loginmsg"></div>
 </form></div>
@@ -136,90 +187,170 @@
   <div id="log"></div>
 </main>
 <script>
+// ---------- icons (inline, no external files) ----------
+const P = {
+  top10: '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4zM7 6H4v1a3 3 0 0 0 3 3M17 6h3v1a3 3 0 0 1-3 3"/>',
+  dev: '<path d="M6 13.9V20h12v-6.1M6 17h12M6 14a4 4 0 0 1-.6-7.9A5 5 0 0 1 12 3a5 5 0 0 1 6.6 3.1A4 4 0 0 1 18 14"/>',
+  snipers: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>',
+  bundle: '<path d="M12 3l8 4-8 4-8-4 8-4zM4 12l8 4 8-4M4 17l8 4 8-4"/>',
+  holders: '<circle cx="9" cy="7" r="4"/><path d="M2 21v-2a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2M16 3.1a4 4 0 0 1 0 7.8M22 21v-2a4 4 0 0 0-3-3.9"/>',
+  launches: '<path d="M5 19c1-3 3-4 5-4M14 10l-4 4M9.5 14.5L5 13l3-4h5M9.5 14.5L11 19l4-3v-5M13 9c2-4 5-6 8-6 0 3-2 6-6 8"/>',
+  copy: '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/>',
+  star: '<path d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4l-5.9 3.1 1.2-6.5L2.5 9.4l6.6-.9L12 2.5z"/>',
+  hide: '<path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6 0 10 7 10 7a17 17 0 0 1-3.2 3.9M6.6 6.6C3.9 8.4 2 12 2 12s4 7 10 7c1.6 0 3-.4 4.3-1M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
+  show: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  ext: '<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
+  bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',
+  belloff: '<path d="M3 3l18 18M8.7 3.7A6 6 0 0 1 18 8c0 3 .5 5 1.2 6.4M17 17H3s3-2 3-9c0-.5 0-1 .2-1.5M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',
+  lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
+};
+const ic = (n) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${P[n]}</svg>`;
+
 const ORDER = { entry: 0, bounce: 1, zone: 2, dip: 3, top: 4, dead: 5 };
 const LABEL = { entry: "Entry", bounce: "Bounce", zone: "In zone", dip: "Dip", top: "Near top", dead: "Dead" };
-let filter = "all", showAll = false, soundOn = false, audio = null, lastAlert = null, state = null;
+const TABS = [["all", "Recommended"], ["watch", "★ Watchlist"], ["entry", "Entry"], ["bounce", "Bounce"], ["zone", "Zone"],
+              ["dip", "Dip"], ["filtered", "Filtered out"], ["hidden", "Hidden by me"]];
+let tab = "all", soundOn = false, audio = null, lastAlert = null, state = null, token = null;
+const openDetails = new Set();
+try { token = localStorage.getItem("swedenToken"); tab = localStorage.getItem("swedenTab") || "all"; } catch (e) {}
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const pct = (x, d = 0) => x == null ? "–" : (x * 100).toFixed(d) + "%";
-const usd = (x) => !x ? "–" : x >= 1e6 ? "$" + (x / 1e6).toFixed(2) + "M" : "$" + (x / 1e3).toFixed(1) + "k";
-const dur = (m) => m < 60 ? Math.round(m) + "m" : Math.floor(m / 60) + "h " + Math.round(m % 60) + "m";
+const pct = (x, d = 1) => x == null ? "–" : (x * 100).toFixed(x * 100 >= 10 ? 0 : d) + "%";
+const usd = (x) => !x ? "–" : x >= 1e6 ? "$" + (x / 1e6).toFixed(2) + "M" : x >= 1e3 ? "$" + (x / 1e3).toFixed(1) + "K" : "$" + x.toFixed(0);
+const dur = (m) => m < 1 ? "<1m" : m < 60 ? Math.round(m) + "m" : Math.floor(m / 60) + "h " + Math.round(m % 60) + "m";
 const secs = (s) => s == null ? "–" : s < 60 ? Math.round(s) + "s" : dur(s / 60);
 const safeUrl = (u) => /^https?:\/\//i.test(u || "") ? u : (u && /^ipfs:\/\//i.test(u) ? "https://ipfs.io/ipfs/" + u.slice(7) : "");
 const xUrl = (t) => !t ? "" : /^https?:/i.test(t) ? t : "https://x.com/" + t.replace(/^@/, "");
+const short = (m) => m.slice(0, 4) + "…" + m.slice(-4);
 
+// ---------- chart ----------
 function chart(c) {
-  // p: [seconds since graduation, close, high, low]; log scale so a -80 % drop doesn't flatten the rest
-  const p = c.pts; if (!p || p.length < 2) return '<svg class="chart"></svg>';
-  const W = 300, H = 90, L = Math.log;
+  // p: [seconds since graduation, close, high, low] (mcap in SOL); log scale so a -80 % drop doesn't flatten the rest
+  const p = c.pts; if (!p || p.length < 2) return '<div class="chartbox"><svg class="chart"></svg></div>';
+  const W = 400, H = 190, L = Math.log, sol = state.sol_usd || 0;
   const x1 = p[p.length - 1][0] || 1;
   const ys = p.flatMap((q) => [q[2], q[3]]).concat([c.peak, c.low ?? c.peak]).filter((v) => v > 0);
   const y0 = L(Math.min(...ys)), y1 = L(Math.max(...ys));
-  const X = (x) => (x / x1) * (W - 8) + 4, Y = (y) => H - 6 - ((L(y) - y0) / ((y1 - y0) || 1)) * (H - 12);
-  const line = p.map((q, i) => (i ? "L" : "M") + X(q[0]).toFixed(1) + " " + Y(q[1]).toFixed(1)).join(" ");
-  const band = p.map((q, i) => (i ? "L" : "M") + X(q[0]).toFixed(1) + " " + Y(q[2]).toFixed(1)).join(" ") + " " +
-    p.slice().reverse().map((q) => "L" + X(q[0]).toFixed(1) + " " + Y(q[3]).toFixed(1)).join(" ") + " Z";
-  const col = getComputedStyle(document.documentElement).getPropertyValue("--" + (c.stage === "top" ? "dead" : c.stage)).trim();
-  let lines = `<line x1="4" x2="${W - 4}" y1="${Y(c.peak)}" y2="${Y(c.peak)}" stroke="#8b98a8" stroke-dasharray="3 3" stroke-width="1" vector-effect="non-scaling-stroke"/>`;
-  if (c.low) lines += `<line x1="4" x2="${W - 4}" y1="${Y(c.low)}" y2="${Y(c.low)}" stroke="#e8743b" stroke-dasharray="3 3" stroke-width="1" vector-effect="non-scaling-stroke"/>`;
-  return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${lines}` +
-    `<path d="${band}" fill="${col}" fill-opacity="0.15" stroke="none"/>` +
-    `<path d="${line}" fill="none" stroke="${col}" stroke-width="1.8" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>`;
+  const X = (x) => (x / x1) * (W - 10) + 5, Y = (y) => H - 22 - ((L(y) - y0) / ((y1 - y0) || 1)) * (H - 44);
+  const pt = (q, k) => X(q[0]).toFixed(1) + " " + Y(q[k]).toFixed(1);
+  const line = p.map((q, i) => (i ? "L" : "M") + pt(q, 1)).join(" ");
+  const band = p.map((q, i) => (i ? "L" : "M") + pt(q, 2)).join(" ") + " " + p.slice().reverse().map((q) => "L" + pt(q, 3)).join(" ") + " Z";
+  const area = line + ` L${X(x1).toFixed(1)} ${H} L${X(p[0][0]).toFixed(1)} ${H} Z`;
+  const col = getComputedStyle(document.documentElement).getPropertyValue("--" + c.stage).trim() || "#7d8396";
+  const id = "g" + c.mint.slice(0, 8);
+  const hl = (y, color) => `<line x1="0" x2="${W}" y1="${Y(y).toFixed(1)}" y2="${Y(y).toFixed(1)}" stroke="${color}" stroke-dasharray="4 4" stroke-width="1" vector-effect="non-scaling-stroke" opacity=".7"/>`;
+  const last = p[p.length - 1];
+  return `<div class="chartbox"><svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+    <defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${col}" stop-opacity=".28"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></linearGradient></defs>
+    ${hl(c.peak, "#7d8396")}${c.low ? hl(c.low, "#ff8a3d") : ""}
+    <path d="${area}" fill="url(#${id})"/>
+    <path d="${band}" fill="${col}" fill-opacity=".12"/>
+    <path d="${line}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+    <circle cx="${X(last[0]).toFixed(1)}" cy="${Y(last[1]).toFixed(1)}" r="3.5" fill="${col}"/>
+  </svg>
+  <span class="clabel tl">top ${usd(c.peak * sol)}</span>${c.low ? `<span class="clabel bl">low ${usd(c.low * sol)}</span>` : ""}
+  <span class="clabel br">${dur(c.grad_min)} since graduation</span></div>`;
 }
 
-function liveLine(c) {
-  const l = c.live; if (!l) return "";
-  return `<div class="checks"><span>live:</span><span>top10 <b>${pct(l.top10)}</b></span><span>dev <b>${pct(l.dev, 1)}</b></span>
-    <span>bundle L/2+/4+ <b>${pct(l.bundle_launch)}</b>/<b>${pct(l.bundle_2)}</b>/<b>${pct(l.bundle_4)}</b></span>
-    <span>snipers <b>${pct(l.snipers_1_3)}</b>/<b>${pct(l.snipers_0_10)}</b></span><span>holders <b>${l.holders}</b></span>
-    <button class="axbtn" data-ax="${esc(c.mint)}" data-sym="${esc(c.sym)}">Axiom ✎</button></div>`;
+// ---------- card ----------
+function metric(icon, label, val, max, fmt = pct) {
+  const cls = val == null ? "na" : max == null ? "" : val <= max ? "good" : "bad";
+  return `<div class="m ${cls}" title="${esc(label)}${max != null ? " (limit " + fmt(max) + ")" : ""}"><div class="v num">${ic(icon)}${val == null ? "–" : fmt(val)}</div><div class="l">${label}</div></div>`;
 }
 
 function card(c) {
-  const m = c.meta || {}, img = safeUrl(m.image), ch = c.checks || {};
-  const badges = `<span class="badge b-${c.stage}">${LABEL[c.stage]}</span>` + (c.mayhem ? ' <span class="badge b-mayhem">Mayhem</span>' : "");
-  const links = [
-    ["pump.fun", "https://pump.fun/coin/" + c.mint], ["DexScreener", "https://dexscreener.com/solana/" + c.mint],
+  const m = c.meta || {}, img = safeUrl(m.image), ch = c.checks || {}, l = c.live || {}, s = state.settings;
+  const axiom = "https://axiom.trade/meme/" + (c.pool || c.mint) + "?chain=sol";
+  const links = [["pump.fun", "https://pump.fun/coin/" + c.mint], ["DexScreener", "https://dexscreener.com/solana/" + c.mint],
     ["Bubblemaps", "https://app.bubblemaps.io/sol/token/" + c.mint], ["X search", "https://x.com/search?f=live&q=" + c.mint],
-    ["Solscan", "https://solscan.io/token/" + c.mint],
-  ];
+    ["Solscan", "https://solscan.io/token/" + c.mint]];
   if (m.twitter) links.push(["Twitter", xUrl(m.twitter)]);
   if (m.telegram && safeUrl(m.telegram)) links.push(["Telegram", safeUrl(m.telegram)]);
   if (m.website && safeUrl(m.website)) links.push(["Website", safeUrl(m.website)]);
-  return `<div class="card stage-${c.stage}${c.visible ? "" : " hidden"}">
-    <div class="top">${img ? `<img class="img" data-copy="${esc(c.mint)}" src="${esc(img)}" loading="lazy" referrerpolicy="no-referrer" alt="">` : `<div class="img" data-copy="${esc(c.mint)}"></div>`}
-      <div class="title" data-copy="${esc(c.mint)}"><div class="name">${esc(c.name)}</div><div class="sym">$${esc(c.sym)}</div></div>${badges}</div>
-    <div class="ca"><button data-copy="${esc(c.mint)}" data-big="1">Copy CA</button><code>${esc(c.mint.slice(0, 4))}…${esc(c.mint.slice(-4))}</code></div>
-    ${c.visible ? "" : `<div class="hiddenwhy">hidden: ${esc(c.hidden)}</div>`}
-    <div class="stats">
-      <div class="stat"><div class="k">Mcap</div><div class="v">${usd(c.mcap_usd)}</div></div>
-      <div class="stat"><div class="k">From top</div><div class="v neg">−${pct(c.dd)}</div></div>
-      <div class="stat"><div class="k">From low</div><div class="v">${c.from_low == null ? "–" : "+" + pct(c.from_low)}</div></div>
-      <div class="stat"><div class="k">Age</div><div class="v">${dur(c.age_min)}</div></div>
+  const badges = `<span class="badge b-${c.stage}">${LABEL[c.stage]}</span>` + (c.watched ? '<span class="badge b-watch">★ Watchlist</span>' : "") +
+    (c.mayhem ? '<span class="badge b-mayhem">Mayhem</span>' : "") +
+    (!c.visible ? `<span class="why">${esc(c.hidden)}</span>` : "");
+  const lastCls = c.last_trade_s == null ? "" : c.last_trade_s > 600 ? "red" : c.last_trade_s < 60 ? "green" : "";
+  const open = openDetails.has(c.mint) ? " open" : "";
+  return `<div class="card stage-${c.stage}${c.watched ? " watched" : ""}${c.visible ? "" : " filtered"}" data-mint="${esc(c.mint)}">
+  <div class="head">
+    ${img ? `<img class="img" data-copy="${esc(c.mint)}" src="${esc(img)}" loading="lazy" referrerpolicy="no-referrer" alt="">` : `<div class="img" data-copy="${esc(c.mint)}"></div>`}
+    <div class="title">
+      <div class="name"><span>${esc(c.name)}</span><button class="mini" data-copy="${esc(c.mint)}" title="Copy CA">${ic("copy")}</button></div>
+      <div class="sub"><span>$${esc(c.sym)}</span><span>age <b>${dur(c.age_min)}</b></span></div>
     </div>
-    ${chart(c)}
-    <div class="checks"><span>top10 <b>${pct(ch.top10)}</b></span><span>bundle <b>${pct(ch.bundle)}</b></span>
-      <span>snipers <b>${pct(ch.snipers)}</b></span><span>top3 trades <b>${pct(ch.top3_trades)}</b></span>
-      <span>creator launches 24h <b>${ch.prior ?? "–"}</b></span><span>dev sold <b>${ch.dev_sold ? "yes" : "no"}</b></span>
-      <span>last trade <b>${secs(c.last_trade_s)} ago</b></span></div>
-    ${liveLine(c)}
+    <div class="acts">
+      <button class="iconbtn star${c.watched ? " on" : ""}" data-pref="${c.watched ? "unwatch" : "watch"}" title="${c.watched ? "Remove from" : "Add to"} watchlist">${ic("star")}</button>
+      <button class="iconbtn" data-pref="${c.user_hidden ? "unhide" : "hide"}" title="${c.user_hidden ? "Show again" : "Hide from recommendations and alerts"}">${ic(c.user_hidden ? "show" : "hide")}</button>
+    </div>
+  </div>
+  <div class="badges">${badges}</div>
+  <button class="copy" data-copy="${esc(c.mint)}" data-big="1"><span>Copy CA</span><code>${esc(short(c.mint))}</code></button>
+  <div class="kpis num">
+    <div class="kpi"><div class="k">Mcap</div><div class="v">${usd(c.mcap_usd)}</div></div>
+    <div class="kpi"><div class="k">From top</div><div class="v red">−${pct(c.dd, 0)}</div></div>
+    <div class="kpi"><div class="k">From low</div><div class="v ${c.from_low ? "green" : "muted"}">${c.from_low == null ? "–" : "+" + pct(c.from_low, 0)}</div></div>
+    <div class="kpi"><div class="k">Last trade</div><div class="v ${lastCls}">${secs(c.last_trade_s)}</div></div>
+  </div>
+  ${chart(c)}
+  <div class="metrics">
+    ${metric("top10", "Top 10 H.", l.top10, s.top10_max)}
+    ${metric("dev", "Dev H.", l.dev, s.dev_max)}
+    ${metric("snipers", "Snipers H.", l.snipers_1_3, s.sniper_max)}
+    ${metric("bundle", "Bundlers", l.bundle_launch, s.bundle_max)}
+    ${metric("holders", "Holders", l.holders, null, (v) => String(v))}
+    ${metric("launches", "Dev launches 24h", ch.prior, s.prior_max, (v) => String(v))}
+  </div>
+  <details data-d="${esc(c.mint)}"${open}><summary>${ic("info")} Details</summary>
+    <div class="dl num">
+      <span>Bundle at graduation (filter)</span><b>${pct(ch.bundle)}</b>
+      <span>Bundle: slot with 2+ / 4+ buyers</span><b>${pct(l.bundle_2)} / ${pct(l.bundle_4)}</b>
+      <span>Snipers: first 10 slots</span><b>${pct(l.snipers_0_10)}</b>
+      <span>Top 3 wallets' share of trades</span><b>${pct(ch.top3_trades)}</b>
+      <span>Buys with identical size</span><b>${pct(ch.same_sizes)}</b>
+      <span>Traders on the curve</span><b>${ch.traders ?? "–"}</b>
+      <span>Dev sold</span><b>${ch.dev_sold ? "yes" : "no"}</b>
+      <span>Graduated</span><b>${dur(c.grad_min)} ago</b>
+    </div>
     ${m.description ? `<div class="desc">${esc(m.description)}</div>` : ""}
-    <div class="links">${links.map(([t, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${t}</a>`).join("")}
-</div>
-  </div>`;
+    <button class="iconbtn axbtn" data-ax="${esc(c.mint)}" data-sym="${esc(c.sym)}">Enter Axiom's numbers ✎</button>
+  </details>
+  <div class="links"><a class="axiom" href="${esc(axiom)}" target="_blank" rel="noopener noreferrer">Axiom ${ic("ext")}</a>${links.map(([t, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${t}</a>`).join("")}</div>
+</div>`;
+}
+
+// ---------- page ----------
+function inTab(c) {
+  if (tab === "hidden") return c.user_hidden;
+  if (c.user_hidden) return false;
+  if (tab === "filtered") return !c.visible;
+  if (!c.visible) return false;
+  if (tab === "watch") return c.watched;
+  return tab === "all" || c.stage === tab;
+}
+
+function renderTabs() {
+  const cs = state ? state.coins : [];
+  const count = (t) => { const keep = tab; tab = t; const n = cs.filter(inTab).length; tab = keep; return n; };
+  $("#tabs").innerHTML = TABS.map(([k, t]) => `<button class="tab${k === tab ? " on" : ""}" data-tab="${k}">${t}<span class="n">${state && (k === tab || !["filtered", "hidden"].includes(k)) ? count(k) : ""}</span></button>`).join("");
 }
 
 function render() {
+  renderTabs();
   if (!state) return;
   const s = state.settings;
-  $("#rules").textContent = `Graduated pump.fun coins ≤ ${s.max_age_h} h old, passing the on-chain checks (bundle ≤ ${pct(s.bundle_max)}), mcap ≤ $${(s.max_mcap_usd / 1000).toFixed(0)}k, at least ${pct(s.show_dd)} below their top. ` +
-    `Zone ${pct(s.dd_min)}–${pct(s.dd_max)} down · bounce +${pct(s.bounce)} off the low · entry after a ${pct(s.pullback)} pullback. SOL $${state.sol_usd.toFixed(0)}.`;
-  let cs = state.coins.filter((c) => filter === "all" || c.stage === filter);
-  cs.sort((a, b) => (b.visible - a.visible) || (ORDER[a.stage] - ORDER[b.stage]) || (a.age_min - b.age_min));
-  $("#grid").innerHTML = cs.length ? cs.map(card).join("") : '<div class="empty">No coin matches right now. Waiting for graduates that dip…</div>';
-  $("#log").innerHTML = "<b>Alerts</b> (tap one to copy its CA)" + state.alerts.slice(-15).reverse().map((a) =>
-    `<div data-copy="${esc(a.mint)}">${new Date(a.ts * 1000).toLocaleTimeString()} · ${a.kind === "entry" ? "🟢" : "🔔"} ${esc(a.text)}</div>`).join("");
+  $("#rules").textContent = `Recommended: graduated pump.fun coins ≤ ${s.max_age_h} h old, passing the on-chain checks (bundle ≤ ${pct(s.bundle_max, 0)}), ` +
+    `mcap ≤ ${usd(s.max_mcap_usd)}, at least ${pct(s.show_dd, 0)} below their top. Watchlist coins always show. SOL $${state.sol_usd.toFixed(0)}.`;
+  const cs = state.coins.filter(inTab);
+  cs.sort((a, b) => (b.watched - a.watched) || (b.visible - a.visible) || (ORDER[a.stage] - ORDER[b.stage]) || (a.age_min - b.age_min));
+  const empty = { all: "Nothing recommended right now. Waiting for graduates that dip…", watch: "Your watchlist is empty. Tap ☆ on a coin to add it.",
+                  hidden: "You haven't hidden any coin.", filtered: "No coins filtered out right now." }[tab] || "No coin in this stage right now.";
+  $("#grid").innerHTML = cs.length ? cs.map(card).join("") : `<div class="empty">${empty}</div>`;
+  $("#log").innerHTML = state.alerts.length ? "<b>Alerts</b> · tap one to copy its CA" + state.alerts.slice(-15).reverse().map((a) =>
+    `<div data-copy="${esc(a.mint)}">${new Date(a.ts * 1000).toLocaleTimeString()} · ${a.kind === "entry" ? "🟢" : "🔔"} ${esc(a.text)}</div>`).join("") : "";
   const last = state.alerts[state.alerts.length - 1];
   $("#latest").classList.toggle("show", !!last);
   if (last) {
@@ -253,60 +384,35 @@ function handleAlerts() {
   setTimeout(() => (document.title = "Sweden terminal"), 8000);
 }
 
-let token = null;
-try { token = localStorage.getItem("swedenToken"); } catch (e) {}
-function showLogin(msg) {
-  $("#login").classList.add("show"); $("#loginmsg").textContent = msg || ""; $("#pk").focus();
-}
-$("#loginform").onsubmit = async (e) => {
-  e.preventDefault();
-  try {
-    const r = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" },
-                                          body: JSON.stringify({ passkey: $("#pk").value }) });
-    const j = await r.json();
-    if (r.ok && j.token) {
-      token = j.token; try { localStorage.setItem("swedenToken", token); } catch (e) {}
-      $("#pk").value = ""; $("#login").classList.remove("show"); tick();
-    } else showLogin(j.error === "locked" ? `Too many wrong tries - wait ${j.wait} s` :
-                     "Wrong passkey" + (j.wait ? ` - locked for ${j.wait} s` : ""));
-  } catch (e) { showLogin("No connection to the terminal"); }
-};
-$("#lock").onclick = () => {
-  token = null; try { localStorage.removeItem("swedenToken"); } catch (e) {}
-  state = null; $("#grid").innerHTML = ""; $("#log").innerHTML = ""; $("#latest").classList.remove("show"); showLogin();
-};
+function showLogin(msg) { $("#login").classList.add("show"); $("#loginmsg").textContent = msg || ""; $("#pk").focus(); }
+function dropToken() { token = null; try { localStorage.removeItem("swedenToken"); } catch (e) {} }
 
 async function tick() {
   if (!token) return showLogin();
+  const all = tab === "filtered" || tab === "hidden" || tab === "watch";
   try {
-    const r = await fetch("/api/state" + (showAll ? "?all=1" : ""), { cache: "no-store", headers: { "X-Sweden-Token": token } });
-    if (r.status === 401) { token = null; try { localStorage.removeItem("swedenToken"); } catch (e) {} return showLogin("Please enter the passkey"); }
+    const r = await fetch("/api/state" + (all ? "?all=1" : ""), { cache: "no-store", headers: { "X-Sweden-Token": token } });
+    if (r.status === 401) { dropToken(); return showLogin("Please enter the passkey"); }
     state = await r.json();
     $("#dot").className = "dot" + (state.live ? " live" : "");
-    const n = state.coins.filter((c) => c.visible).length;
-    $("#status").textContent = (state.live ? "live" : "loading history…") + " · " + n + " coin" + (n === 1 ? "" : "s") + " shown · " + new Date().toLocaleTimeString();
+    const n = state.coins.filter((c) => c.visible && !c.user_hidden).length;
+    $("#status").innerHTML = (state.live ? "live" : "loading history…") + ` · ${n} shown<span class="long"> · ${new Date().toLocaleTimeString()}</span>`;
     handleAlerts(); render();
-  } catch (e) {
-    $("#dot").className = "dot"; $("#status").textContent = "no connection to the terminal";
-  }
+  } catch (e) { $("#dot").className = "dot"; $("#status").textContent = "no connection to the terminal"; }
 }
 
-let axMint = null;
-document.addEventListener("click", (e) => {
-  const ax = e.target.closest("[data-ax]");
-  if (ax) { axMint = ax.dataset.ax; $("#axform").reset(); $("#axtitle").textContent = "What Axiom shows for $" + ax.dataset.sym + " right now";
-            $("#ax").classList.add("show"); return; }
-  const f = e.target.closest("[data-f]");
-  if (f) { filter = f.dataset.f; document.querySelectorAll("[data-f]").forEach((b) => b.classList.toggle("on", b === f)); render(); }
-  const cp = e.target.closest("[data-copy]");
-  if (cp && cp.dataset.copy) copyCA(cp.dataset.copy, cp.id === "latestcopy" ? cp : cp.closest(".card")?.querySelector("[data-big]"));
-});
+// ---------- actions ----------
+function toast(text, ok = true) {
+  const ts = $("#toast"); ts.textContent = text; ts.style.background = ok ? "var(--green)" : "var(--red)";
+  ts.classList.add("show"); clearTimeout(ts._t); ts._t = setTimeout(() => ts.classList.remove("show"), 1600);
+}
 function copyCA(t, btn) {
-  const done = () => { const ts = $("#toast"); ts.textContent = "CA copied: " + t.slice(0, 4) + "…" + t.slice(-4);
-    ts.classList.add("show"); clearTimeout(ts._t); ts._t = setTimeout(() => ts.classList.remove("show"), 1500);
-    if (btn) { btn.textContent = "Copied ✓"; btn.classList.add("done");
-    setTimeout(() => { btn.textContent = "Copy CA"; btn.classList.remove("done"); }, 1500); } };
-  const fallback = () => {                       // older browsers / plain http
+  const done = () => {
+    toast("CA copied: " + short(t));
+    if (btn) { const old = btn.innerHTML; btn.classList.add("done"); btn.innerHTML = btn.id === "latestcopy" ? "Copied ✓" : "<span>Copied ✓</span>";
+      setTimeout(() => { btn.classList.remove("done"); btn.innerHTML = old; }, 1400); }
+  };
+  const fallback = () => {                                   // plain http / older browsers
     const ta = document.createElement("textarea"); ta.value = t; ta.setAttribute("readonly", "");
     ta.style.position = "fixed"; ta.style.opacity = "0"; document.body.appendChild(ta);
     ta.focus(); ta.select(); ta.setSelectionRange(0, t.length);
@@ -315,30 +421,66 @@ function copyCA(t, btn) {
   };
   if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(t).then(done, fallback); else fallback();
 }
+async function setPref(mint, action) {
+  try {
+    const r = await fetch("/api/prefs", { method: "POST", headers: { "Content-Type": "application/json", "X-Sweden-Token": token },
+                                          body: JSON.stringify({ mint, action }) });
+    if (!r.ok) throw 0;
+    toast({ watch: "Added to watchlist", unwatch: "Removed from watchlist", hide: "Hidden - no more alerts for it", unhide: "Shown again" }[action]);
+    tick();
+  } catch (e) { toast("Not saved", false); }
+}
+
+let axMint = null;
+document.addEventListener("click", (e) => {
+  const t = e.target.closest("[data-tab]");
+  if (t) { tab = t.dataset.tab; try { localStorage.setItem("swedenTab", tab); } catch (e) {} render(); tick(); return; }
+  const pf = e.target.closest("[data-pref]");
+  if (pf) { setPref(pf.closest("[data-mint]").dataset.mint, pf.dataset.pref); return; }
+  const ax = e.target.closest("[data-ax]");
+  if (ax) { axMint = ax.dataset.ax; $("#axform").reset(); $("#axtitle").textContent = "What Axiom shows for $" + ax.dataset.sym + " right now";
+            $("#ax").classList.add("show"); return; }
+  const cp = e.target.closest("[data-copy]");
+  if (cp && cp.dataset.copy) copyCA(cp.dataset.copy, cp.dataset.big || cp.id === "latestcopy" ? cp : cp.closest(".card")?.querySelector("[data-big]"));
+});
+document.addEventListener("toggle", (e) => {
+  const d = e.target; if (!d.dataset || !d.dataset.d) return;
+  d.open ? openDetails.add(d.dataset.d) : openDetails.delete(d.dataset.d);
+}, true);
+
+$("#loginform").onsubmit = async (e) => {
+  e.preventDefault();
+  try {
+    const r = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ passkey: $("#pk").value }) });
+    const j = await r.json();
+    if (r.ok && j.token) {
+      token = j.token; try { localStorage.setItem("swedenToken", token); } catch (e) {}
+      $("#pk").value = ""; $("#login").classList.remove("show"); tick();
+    } else showLogin(j.error === "locked" ? `Too many wrong tries - wait ${j.wait} s` : "Wrong passkey" + (j.wait ? ` - locked for ${j.wait} s` : ""));
+  } catch (e) { showLogin("No connection to the terminal"); }
+};
+$("#lock").innerHTML = ic("lock");
+$("#lock").onclick = () => { dropToken(); state = null; $("#grid").innerHTML = ""; $("#log").innerHTML = ""; $("#latest").classList.remove("show"); renderTabs(); showLogin(); };
+const soundLabel = () => { $("#sound").innerHTML = ic(soundOn ? "bell" : "belloff") + `<span>${soundOn ? "Sound on" : "Sound off"}</span>`; $("#sound").classList.toggle("on", soundOn); };
+$("#sound").onclick = () => {
+  soundOn = !soundOn;
+  if (soundOn && !audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+  if ("Notification" in window && Notification.permission === "default") Notification.requestPermission();
+  soundLabel(); if (soundOn) beep("new");
+};
 $("#axcancel").onclick = () => $("#ax").classList.remove("show");
 $("#axform").onsubmit = async (e) => {
   e.preventDefault();
   const values = {}; new FormData(e.target).forEach((v, k) => { v = String(v).replace(",", ".").replace("%", "").trim(); if (v) values[k] = v; });
-  const ts = $("#toast");
   try {
     const r = await fetch("/api/axiom", { method: "POST", headers: { "Content-Type": "application/json", "X-Sweden-Token": token },
                                           body: JSON.stringify({ mint: axMint, values }) });
-    ts.textContent = r.ok ? "Saved - thanks" : "Not saved (empty or coin gone)";
-  } catch (err) { ts.textContent = "No connection"; }
-  ts.classList.add("show"); clearTimeout(ts._t); ts._t = setTimeout(() => ts.classList.remove("show"), 1500);
+    toast(r.ok ? "Saved - thanks" : "Not saved (empty or coin gone)", r.ok);
+  } catch (err) { toast("No connection", false); }
   $("#ax").classList.remove("show");
 };
-$("#showall").onclick = (e) => { showAll = !showAll; e.target.classList.toggle("on", showAll); tick(); };
-$("#sound").onclick = (e) => {
-  soundOn = !soundOn;
-  if (soundOn && !audio) audio = new (window.AudioContext || window.webkitAudioContext)();
-  if ("Notification" in window && Notification.permission === "default") Notification.requestPermission();
-  e.target.textContent = soundOn ? "🔔 Sound on" : "🔇 Enable sound";
-  e.target.classList.toggle("warn", !soundOn); e.target.classList.toggle("on", soundOn);
-  if (soundOn) beep("new");
-};
 const setHH = () => document.documentElement.style.setProperty("--hh", document.querySelector("header").offsetHeight + "px");
-setHH(); addEventListener("resize", setHH);
+soundLabel(); renderTabs(); setHH(); addEventListener("resize", setHH);
 tick(); setInterval(tick, 3000);
 </script>
 </body>

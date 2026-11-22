@@ -36,6 +36,7 @@ from grad_replay import SKIP, WSOL, sol_usd
 HERE = os.path.dirname(os.path.abspath(__file__))
 HISTORY_S = 72 * 3600                    # creator history (24 h) and copied names (72 h) need this much data
 AXIOM_FILE = os.path.join(R.DATA, "axiom_checks.jsonl")
+PREFS_FILE = os.path.join(R.DATA, "terminal_prefs.json")
 PASSKEY_FILE = os.path.join(HERE, "..", "terminal_passkey")
 TOKEN_DAYS = 30
 AXIOM_FIELDS = ("top10", "dev", "snipers", "insiders", "bundlers", "holders")
@@ -181,6 +182,7 @@ class Coin:
         self.peak = 0.0; self.low = self.hi = None; self.mode = "top"; self.stage = "top"
         self.price = None
         self.meta = None
+        self.pool = None
         self.seen_visible = False
         self.entries = 0
         self.last_trade = None
@@ -204,9 +206,35 @@ def chart(c, now, n=90):
     return out
 
 
+class Prefs:
+    """Watchlist and coins hidden by the user, kept on the Pi (data/terminal_prefs.json) so phone and PC share them."""
+
+    def __init__(self):
+        try:
+            d = json.load(open(PREFS_FILE))
+        except (OSError, ValueError):
+            d = {}
+        self.sets = {k: set(d.get(k, [])) for k in ("watch", "hide")}
+
+    def get(self, k):
+        return self.sets[k]
+
+    def change(self, mint, action):
+        k, on = {"watch": ("watch", True), "unwatch": ("watch", False),
+                 "hide": ("hide", True), "unhide": ("hide", False)}[action]
+        (self.sets[k].add if on else self.sets[k].discard)(mint)
+        if action == "hide":
+            self.sets["watch"].discard(mint)
+        tmp = PREFS_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump({k: sorted(v) for k, v in self.sets.items()}, f)
+        os.replace(tmp, PREFS_FILE)
+
+
 class Terminal:
     def __init__(self, a):
         self.a = a
+        self.prefs = Prefs()
         self.coins = {}
         self.creators = collections.defaultdict(list)
         self.names = {}
@@ -274,7 +302,7 @@ class Terminal:
         elif kind == "P":
             if r[9] == R.NO_CREATOR:                # a pool opened by hand, not the migration (fake graduation)
                 return
-            c.pool_ok = r[6] == WSOL
+            c.pool_ok, c.pool = r[6] == WSOL, r[5]
             c.grad_ts = c.grad_ts or r[3]
             if c.S is not None:                     # graduation event missed by the feed: run the checks now
                 c.feat = c.S.features()
@@ -341,6 +369,10 @@ class Terminal:
         """(shown?, reason it is hidden)."""
         if c.grad_ts is None or not c.pool_ok or c.price is None:
             return False, "not graduated"
+        if c.mint in self.prefs.get("hide"):
+            return False, "hidden by you"
+        if c.mint in self.prefs.get("watch"):
+            return True, ""
         if time.time() - c.ts > self.a.max_age:
             return False, "older than max age"
         if c.flag and not self.a.mayhem:
@@ -451,7 +483,8 @@ class Terminal:
                     continue
                 f = c.feat or {}
                 out.append(dict(
-                    mint=c.mint, name=c.name, sym=c.sym, stage=c.stage, visible=vis, hidden=why,
+                    mint=c.mint, pool=c.pool, name=c.name, sym=c.sym, stage=c.stage, visible=vis, hidden=why,
+                    watched=c.mint in self.prefs.get("watch"), user_hidden=c.mint in self.prefs.get("hide"),
                     mayhem=bool(c.flag), age_min=(now - c.ts) / 60, grad_min=(now - c.grad_ts) / 60,
                     mcap_usd=self.mcap_usd(c), mcap_sol=c.price * 1e6,
                     dd=1 - c.price / c.peak, from_low=(c.price / c.low - 1) if c.low else None,
@@ -466,6 +499,8 @@ class Terminal:
             alerts = list(self.alerts)
         return dict(now=now, live=self.live, sol_usd=self.usd, coins=out, alerts=alerts,
                     settings=dict(max_age_h=self.a.max_age / 3600, max_mcap_usd=self.a.max_mcap_usd, bundle_max=self.a.bundle_max,
+                                  top10_max=R.FILTER["top10_pct"], sniper_max=R.FILTER["sniper_pct"],
+                                  dev_max=R.FILTER["dev_pct"], prior_max=R.FILTER["max_prior_launches"],
                                   show_dd=self.a.show_dd, dd_min=self.a.dd_min, dd_max=self.a.dd_max,
                                   bounce=self.a.bounce, pullback=self.a.pullback))
 
@@ -507,9 +542,20 @@ def serve(t, port):
                 self.send(404, b"not found", "text/plain")
 
         def do_POST(self):
-            if self.path not in ("/api/login", "/api/axiom"):
+            if self.path not in ("/api/login", "/api/axiom", "/api/prefs"):
                 return self.send(404, b"not found", "text/plain")
             n = int(self.headers.get("Content-Length") or 0)
+            if self.path == "/api/prefs":
+                if not gate.token_ok(self.headers.get("X-Sweden-Token")):
+                    return self.send(401, b'{"error":"locked"}', "application/json")
+                try:
+                    b = json.loads(self.rfile.read(min(n, 1000)))
+                    with t.lock:
+                        t.prefs.change(str(b["mint"])[:64], b["action"])
+                    ok = True
+                except (ValueError, KeyError, TypeError, AttributeError):
+                    ok = False
+                return self.send(200 if ok else 400, json.dumps(dict(ok=ok)).encode(), "application/json")
             if self.path == "/api/axiom":
                 if not gate.token_ok(self.headers.get("X-Sweden-Token")):
                     return self.send(401, b'{"error":"locked"}', "application/json")
