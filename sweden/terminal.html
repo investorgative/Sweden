@@ -317,12 +317,39 @@
     .status #status { display: none; }                       /* the live dot stays */
     .bar { gap: 6px; overflow: hidden; }
     .wchip { padding: 6px 8px; font-size: 12px; }
-    #sound span, #opensettings span, #openjournal span { display: none; }
+    #sound span, #opensettings span, #openjournal span, #openfriends span, #opensignals span { display: none; }
+    #bnav button { font-size: 10px; }
     #opensettings, #lock { display: none; }                  /* settings are in the bottom bar (log out / lock there) */
   }
 
   /* signals page */
   #sigpage { position: fixed; inset: 0; z-index: 6; background: var(--bg); overflow-y: auto; display: none; }
+  #friendpage { position: fixed; inset: 0; z-index: 6; background: var(--bg); overflow-y: auto; display: none; }
+  #friendpage.show { display: block; }
+  #fpmodal { position: fixed; inset: 0; z-index: 9; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; padding: 16px; }
+  #fpmodal .kbox { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; width: min(440px, 100%); max-height: 90vh; overflow-y: auto; padding: 16px; }
+  #fpadd { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; color: var(--text); padding: 8px 10px; font-size: 14px; }
+  #fpmodal input[type=text] { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; color: var(--text); padding: 6px 8px; }
+  .av { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; flex: none; display: inline-grid; place-items: center;
+        font-size: 10px; font-weight: 700; color: #0b0d12; vertical-align: middle; border: 1.5px solid var(--panel); }
+  .av.big { width: 52px; height: 52px; font-size: 20px; }
+  .av.md { width: 34px; height: 34px; font-size: 14px; }
+  .avs { display: inline-flex; align-items: center; } .avs .av + .av { margin-left: -7px; }
+  .badge.b-friend { background: color-mix(in srgb, #f472b6 20%, transparent); color: var(--text); text-transform: none; letter-spacing: 0; font-weight: 600;
+              display: inline-flex; align-items: center; gap: 6px; padding-left: 3px; }
+  .fgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+  .fcard { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .fcard .top { display: flex; gap: 12px; align-items: center; } .fcard .top .who { flex: 1; min-width: 0; }
+  .fcard .who b { display: block; font-size: 15px; } .fcard .who small { color: var(--muted); }
+  .fchips { display: flex; flex-wrap: wrap; gap: 6px; } .fchip { background: var(--panel2); border: 1px solid var(--line); border-radius: 999px;
+            padding: 4px 9px; font-size: 12px; cursor: pointer; color: var(--text); } .fchip:hover { border-color: var(--panel3); }
+  .fshare { font-size: 11.5px; color: var(--muted); } .fshare b { color: var(--text); font-weight: 600; }
+  .ffeed .r { display: flex; align-items: center; gap: 10px; padding: 8px 4px; border-bottom: 1px solid var(--line); font-size: 13px; cursor: pointer; }
+  .ffeed .r:last-child { border-bottom: 0; } .ffeed .r small { color: var(--muted); margin-left: auto; white-space: nowrap; }
+  .fprefs .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .fprefs .row small { display: block; color: var(--muted); font-size: 11.5px; }
+  .fpos .r { display: flex; align-items: center; gap: 9px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .fpos .r:last-child { border-bottom: 0; } .fpos .r .m { margin-left: auto; text-align: right; }
   #sigpage.show { display: block; }
   .sgsum { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .lvrow { display: grid; grid-template-columns: 52px 1fr 44px; gap: 4px 10px; align-items: center; font-size: 12px; padding: 4px 0; }
@@ -520,6 +547,7 @@
     <div id="wchips" style="display:flex;gap:6px"></div>
     <button class="iconbtn" id="openrecent" title="Recently viewed coins"></button>
     <button class="iconbtn" id="opensignals" title="Signals: how did the recommendations do?"></button>
+    <button class="iconbtn" id="openfriends" title="Friends (F)"></button>
     <a class="iconbtn" id="openjournal" href="/journal/" title="Trading journal (J): your wallet trades, analytics, weak spots"></a>
     <button class="iconbtn" id="pasteca" title="Jump to the coin whose CA is in your clipboard (or press Ctrl+V anywhere)"></button>
     <button class="iconbtn" id="testpush" title="Send a test push to your phone (ntfy)"></button>
@@ -532,13 +560,14 @@
 <div id="toast"></div>
 <nav id="bnav" aria-label="Navigation">
   <button data-bn="home"></button><button data-bn="watch"></button><button data-bn="signals"></button>
-  <button data-bn="wallet"></button><button data-bn="paste"></button><button data-bn="settings"></button>
+  <button data-bn="wallet"></button><button data-bn="friends"></button><button data-bn="paste"></button><button data-bn="settings"></button>
 </nav>
 <button class="keyhint" onclick="showKeys()" title="Keyboard shortcuts">⌨ ?</button>
 <div id="flash"></div>
 <div id="coinpage" aria-label="Coin details"></div>
 <div id="walletpage" aria-label="Portfolio"></div>
 <div id="sigpage" aria-label="Signals"></div>
+<div id="friendpage" aria-label="Friends"></div>
 <div id="ax"><form id="axform" autocomplete="off">
   <b id="axtitle"></b>
   <div class="axgrid">
@@ -610,11 +639,12 @@ const P = {
   home: '<path d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
   wallet: '<rect x="3" y="6" width="18" height="14" rx="2"/><path d="M3 10h18M16 15h2M7 6V4h10v2"/>',
   book: '<path d="M4 4h6a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H4z"/><path d="M20 4h-6a3 3 0 0 0-3 3v13a2 2 0 0 1 2-2h7z"/>',
+  users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.3-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><circle cx="17" cy="9" r="2.8"/><path d="M16.5 14.6c2.6.2 4.4 1.9 5 4.9"/>',
   phone: '<rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/>',
 };
 const ic = (n) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${P[n]}</svg>`;
 
-const AICON = { entry: "🟢", px: "💰", danger: "⚠️", grad: "🎓", test: "🧪", new: "🔔", track: "👁" };
+const AICON = { entry: "🟢", px: "💰", danger: "⚠️", grad: "🎓", test: "🧪", new: "🔔", track: "👁", friend: "👥" };
 const NOTE_TAGS = { meme: "👍 good meme", rug: "🚩 rug", watch: "👀 watch", skip: "⏭ skip" };
 const noteHtml = (n) => !n ? "" : `<div class="note">${n.tag ? `<span class="ntag">${NOTE_TAGS[n.tag]}</span>` : ""}${n.text ? `<span>${esc(n.text.slice(0, 140))}</span>` : ""}</div>`;
 const ORDER = { entry: 0, bounce: 1, zone: 2, dip: 3, top: 4, dead: 5 };
@@ -726,7 +756,7 @@ function lrow(c) {
   const fresh = cardsReady && !cardsSeen.has(c.mint); cardsSeen.add(c.mint);
   return `<div class="lrow stage-${c.stage}${c.watched ? " watched" : ""}${c.visible ? "" : " filtered"}${fresh ? " enter" : ""}${c.mint === focusMint ? " focus" : ""}" data-mint="${esc(c.mint)}">
     ${img ? `<img class="img" src="${esc(img)}" loading="lazy" referrerpolicy="no-referrer" alt="" data-open="${esc(c.mint)}">` : `<div class="img" data-open="${esc(c.mint)}"></div>`}
-    <div class="nm" data-open="${esc(c.mint)}" style="cursor:pointer"><b>${esc(c.name)}</b><small><span class="stg" style="color:var(--${c.stage})">● ${LABEL[c.stage]}</span> · $${esc(c.sym)} · ${dur(c.age_min)}${c.note && c.note.tag ? " · " + NOTE_TAGS[c.note.tag] : ""}${c.mine && c.mine.amount > 0 ? " · ◎ held" : ""}</small></div>
+    <div class="nm" data-open="${esc(c.mint)}" style="cursor:pointer"><b>${esc(c.name)}</b><small><span class="stg" style="color:var(--${c.stage})">● ${LABEL[c.stage]}</span> · $${esc(c.sym)} · ${dur(c.age_min)}${c.note && c.note.tag ? " · " + NOTE_TAGS[c.note.tag] : ""}${c.mine && c.mine.amount > 0 ? " · ◎ held" : ""}${(c.friends || []).length ? " · " + avatars(c.friends.map((f) => f.uid), 3) : ""}</small></div>
     <span class="num mc"><b>${usd(c.mcap_usd)}</b><small class="red">−${pct(c.dd, 0)}</small></span>
     <span class="num hide-sm ${c.last_trade_s > 600 ? "red" : ""}">${secs(c.last_trade_s)}</span>
     <span class="hide-sm">${spark(c)}</span>
@@ -746,6 +776,7 @@ function card(c) {
   const badges = `<span class="badge b-${c.stage}">${LABEL[c.stage]}</span>` + (c.watched ? '<span class="badge b-watch">★ Watchlist</span>' : "") +
     (c.mayhem ? '<span class="badge b-mayhem">Mayhem</span>' : "") +
     (c.smart ? `<span class="badge b-mine" title="Wallets with the most realized profit over the last 24 h that hold this coin">👑 ${c.smart} top-PnL wallet${c.smart === 1 ? "" : "s"}</span>` : "") +
+    friendBadge(c) +
     (c.mine && c.mine.amount > 0 ? `<span class="badge b-mine">◎ You hold ${money(c.mine.value_usd)}${c.mine.pnl != null ? ` · <span class="${c.mine.pnl >= 0 ? "green" : "red"}">${c.mine.pnl >= 0 ? "+" : "−"}${Math.abs(c.mine.pnl * 100).toFixed(0)}%</span>` : ""}</span>` : "") +
     (!c.visible ? `<span class="why">${esc(c.hidden)}</span>` : "");
   const lastCls = c.last_trade_s == null ? "" : c.last_trade_s > 600 ? "red" : c.last_trade_s < 60 ? "green" : "";
@@ -925,17 +956,18 @@ function parseNum(s) {                                       // "50k", "1.2m", "
 function openCoin(mint) { location.hash = "#coin/" + mint; }
 function route() {
   const m = location.hash.match(/^#coin\/([1-9A-HJ-NP-Za-km-z]{32,44})$/), ok = token && userToken;
-  if (m && ok) { hideWallet(); hideSignals(); showCoin(m[1]); }
+  if (m && ok) { hideWallet(); hideSignals(); hideFriends(); showCoin(m[1]); }
   else {
     hideCoin();
     location.hash === "#wallet" && ok ? showWallet() : hideWallet();
     location.hash === "#signals" && ok ? showSignals() : hideSignals();
+    location.hash === "#friends" && ok ? showFriends() : hideFriends();
   }
 }
 window.addEventListener("hashchange", route);
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape" || $("#keyhelp")?.classList.contains("show") || $("#settings").classList.contains("show")) return;
-  if (cp.mint || wp.open || sg.open) history.back();
+  if (cp.mint || wp.open || sg.open || fp.open) history.back();
 });
 
 function rememberCoin(mint, name, sym) {                     // recently viewed (this browser only)
@@ -991,6 +1023,7 @@ function showCoin(mint) {
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px"><label class="wnote"><input type="checkbox" id="cpnoteshare"> share with friends</label>
           <button class="iconbtn" id="cpnotesave">Save note</button></div><div id="cpfriends"></div></div>
       <div class="cp-box" id="cpminebox" hidden><h4>Your position</h4><div class="kv num" id="cpmine"></div></div>
+      <div class="cp-box" id="cpfbox" hidden><h4>Friends</h4><div class="fpos" id="cpfpos"></div></div>
       <div class="cp-box"><h4>Buy / sell pressure</h4><div id="cppress"></div></div>
       <div class="cp-box"><h4>Token info</h4><div class="metrics" id="cpmetrics"></div><div class="kv num" id="cpkv" style="margin-top:12px"></div></div>
       <div class="cp-box"><div class="links" id="cplinks"></div></div>
@@ -1020,6 +1053,190 @@ function showCoin(mint) {
   loadLW().then(rebuildChart, () => { $("#cpchart").innerHTML = '<div class="msg">The chart library could not be loaded (no internet?)</div>'; });
   cpRefresh(); cp.timer = setInterval(cpRefresh, 3000);
 }
+// ================= friends =================
+const FR = { me: null, byId: {}, defaults: null, data: null, loaded: 0 };
+const fp = { open: false, timer: null };
+const HUES = [340, 200, 150, 40, 270, 10, 180, 100];
+function fname(uid) { const f = FR.byId[uid]; return f ? f.name : "friend"; }
+function avatarHtml(f, size = "") {
+  if (f && f.avatar) return `<img class="av ${size}" src="${esc(f.avatar)}" alt="">`;
+  const n = (f && (f.name || f.username)) || "?", h = HUES[((f && f.uid) || n.length) % HUES.length];
+  return `<span class="av ${size}" style="background:${f && f.color ? esc(f.color) : `hsl(${h} 70% 72%)`}">${esc(n.slice(0, 1).toUpperCase())}</span>`;
+}
+function avatars(uids, max = 4) {
+  return `<span class="avs">${uids.slice(0, max).map((u) => avatarHtml(FR.byId[u] || { uid: u, name: "?" })).join("")}</span>`;
+}
+function friendBadge(c) {
+  const fs = c.friends || [];
+  if (!fs.length) return "";
+  const hold = fs.filter((f) => f.holds), watch = fs.filter((f) => f.watching && !f.holds), sold = fs.filter((f) => f.traded && !f.holds);
+  const names = (a) => a.slice(0, 2).map((f) => esc(fname(f.uid))).join(", ") + (a.length > 2 ? ` +${a.length - 2}` : "");
+  const parts = [];
+  if (hold.length) parts.push(`${names(hold)} hold${hold.length === 1 && hold[0].pnl != null ? ` <span class="${hold[0].pnl >= 0 ? "green" : "red"}">${hold[0].pnl >= 0 ? "+" : "−"}${Math.abs(hold[0].pnl * 100).toFixed(0)}%</span>` : ""}`);
+  if (sold.length) parts.push(`${names(sold)} traded`);
+  if (watch.length) parts.push(`${names(watch)} watching`);
+  return `<span class="badge b-friend" title="Friends in this coin">${avatars(fs.map((f) => f.uid))}${parts.join(" · ")}</span>`;
+}
+function renderCoinFriends(d) {
+  const fs = d.fpos || [];
+  $("#cpfbox").hidden = !fs.length;
+  if (!fs.length) return;
+  $("#cpfpos").innerHTML = fs.map((f) => {
+    const buys = (f.trades || []).filter((t) => t[1]).length, sells = (f.trades || []).filter((t) => !t[1]).length;
+    const what = f.holds ? "holds" : f.traded ? "sold" : "watching";
+    const money2 = f.cost_sol != null ? ` · in ◎${f.cost_sol.toFixed(2)}${f.value_usd != null ? ` · now ${money(f.value_usd)}` : ""}` : "";
+    return `<div class="r">${avatarHtml(FR.byId[f.uid] || { uid: f.uid })}<div><b>${esc(fname(f.uid))}</b> <span class="muted">${what}</span>
+      <div class="wnote">${f.traded ? `${buys} buy${buys === 1 ? "" : "s"} · ${sells} sell${sells === 1 ? "" : "s"}${money2}` : "on the watchlist"}</div></div>
+      <div class="m num">${f.entry_mcap_usd ? `entry ${usd(f.entry_mcap_usd)}` : ""}${f.holds && f.pnl != null ? `<div>${pctTxt(f.pnl)}</div>` : ""}</div></div>`;
+  }).join("") + '<div class="wnote" style="margin-top:6px">From the live feed and their wallet. Amounts only if a friend shows you their capital.</div>';
+}
+async function loadFriends() {
+  try {
+    const r = await fetch("/api/friends", { headers: AH() });
+    if (!r.ok) return;
+    const j = await r.json();
+    FR.data = j; FR.me = j.me; FR.defaults = j.defaults; FR.loaded = Date.now();
+    FR.byId = {}; for (const f of j.friends) FR.byId[f.uid] = f;
+    if (fp.open) renderFriends();
+    markFriendReq();
+  } catch (e) {}
+}
+function markFriendReq() {
+  const n = (FR.data && FR.data.req_in.length) || 0;
+  const b = document.querySelector('[data-bn="friends"]');
+  if (b) b.innerHTML = ic("users") + "Friends" + (n ? ` <b style="color:#f472b6">${n}</b>` : "");
+  $("#openfriends").innerHTML = ic("users") + "<span>Friends</span>" + (n ? ` <b style="color:#f472b6">${n}</b>` : "");
+}
+async function social(act, body) {
+  try {
+    const r = await fetch("/api/social/" + act, { method: "POST", headers: { "Content-Type": "application/json", ...AH() }, body: JSON.stringify(body || {}) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) { toast(j.error || "Not saved", false); return null; }
+    return j;
+  } catch (e) { toast("No connection", false); return null; }
+}
+function showFriends() {
+  if (fp.open) return;
+  fp.open = true;
+  const el = $("#friendpage");
+  el.innerHTML = `<div class="cp-top"><button class="iconbtn" id="fpback" aria-label="Back">←</button>
+      <div class="title"><div class="name"><span>Friends</span></div><div class="sub">Who you trade with - each friend sees only what you share with them</div></div>
+      <a class="iconbtn" href="/journal/#/achievements" title="Journal: trading circle">${ic("book")}<span>Journal</span></a></div>
+    <div class="wp-body" id="fpbody"><div class="msg">Loading…</div></div>`;
+  el.classList.add("show"); document.body.style.overflow = "hidden"; el.scrollTop = 0;
+  $("#fpback").onclick = () => history.back();
+  el.onclick = onFriendClick;
+  renderFriends(); loadFriends(); fp.timer = setInterval(loadFriends, 20000);
+}
+function hideFriends() {
+  if (!fp.open) return;
+  fp.open = false; clearInterval(fp.timer);
+  $("#friendpage").classList.remove("show"); $("#friendpage").innerHTML = ""; document.body.style.overflow = "";
+}
+const shareTxt = (sh) => !sh ? "" : [sh.share_trades ? "trades" : null, sh.share_watch ? "watchlist" : null, sh.show_capital ? "capital" : null].filter(Boolean).join(", ") || "nothing";
+function renderFriends() {
+  const d = FR.data, body = $("#fpbody");
+  if (!body || !d) return;
+  const me = d.me || {};
+  const ago = (ts) => { const m = (Date.now() / 1000 - ts) / 60; return m < 1 ? "now" : m < 60 ? Math.round(m) + "m" : Math.round(m / 60) + "h"; };
+  body.innerHTML = `
+    <div class="cp-box"><div class="fcard" style="border:0;padding:0;background:none"><div class="top">${avatarHtml(me, "big")}
+      <div class="who"><b>${esc(me.name)}</b><small>${me.username ? "@" + esc(me.username) : "no username yet"}${me.bio ? " · " + esc(me.bio) : ""}</small></div>
+      <button class="iconbtn" data-fp="profile">Edit profile</button></div>
+      ${me.username ? "" : '<div class="wnote">Choose a username first (Settings > Profile &amp; friends) - friends add you with it.</div>'}
+      ${d.has_wallet ? "" : '<div class="wnote">Add your wallet (Portfolio) so friends can see your trades - and you theirs on the charts.</div>'}
+      <div style="display:flex;gap:8px"><input type="text" id="fpadd" placeholder="Add a friend by username" autocomplete="off" spellcheck="false" style="flex:1">
+        <button class="iconbtn" data-fp="add">Send request</button></div></div></div>
+    ${d.req_in.length ? `<div class="cp-box"><h4>Requests for you</h4>${d.req_in.map((r) => `<div class="ffeed"><div class="r">${avatarHtml(r)}<b>${esc(r.name)}</b><span class="muted">@${esc(r.username)}</span>
+        <small><button class="iconbtn" data-fp="accept" data-uid="${r.uid}">Accept</button> <button class="iconbtn" data-fp="decline" data-uid="${r.uid}">Decline</button></small></div></div>`).join("")}</div>` : ""}
+    ${d.req_out.length ? `<div class="cp-box"><h4>Sent requests</h4>${d.req_out.map((r) => `<div class="ffeed"><div class="r">${avatarHtml(r)}<b>${esc(r.name)}</b><span class="muted">@${esc(r.username)} · waiting</span>
+        <small><button class="iconbtn" data-fp="remove" data-uid="${r.uid}">Withdraw</button></small></div></div>`).join("")}</div>` : ""}
+    <div class="fgrid">${d.friends.map((f) => `<div class="fcard"><div class="top">${avatarHtml(f, "md")}
+        <div class="who"><b>${esc(f.name)}</b><small>@${esc(f.username)}${f.bio ? " · " + esc(f.bio) : ""}</small></div>
+        <button class="iconbtn" data-fp="prefs" data-uid="${f.uid}" title="Settings for this friend">${ic("gear")}</button></div>
+      ${f.journal ? `<div class="fshare">Journal: score <b>${f.journal.score}</b> · level <b>${f.journal.level}</b> · win rate <b>${pct(f.journal.winRate, 0)}</b> · streak <b>${f.journal.streak}</b></div>` : ""}
+      <div><div class="wnote">Holds now</div><div class="fchips">${f.holds.length ? f.holds.map((h) => `<span class="fchip" data-open="${esc(h.mint)}">$${esc(h.sym)} ${h.pnl != null ? pctTxt(h.pnl) : ""}${h.value_usd != null ? " · " + money(h.value_usd) : ""}</span>`).join("") : `<span class="wnote">${f.share.share_trades ? "nothing the terminal tracks" : "not shared with you"}</span>`}</div></div>
+      ${f.watch.length ? `<div><div class="wnote">Watchlist</div><div class="fchips">${f.watch.map((w) => `<span class="fchip" data-open="${esc(w.mint)}">★ $${esc(w.sym)}</span>`).join("")}</div></div>` : ""}
+      <div class="fshare">Shares with you: <b>${shareTxt(f.share)}</b> · you share: <b>${shareTxt(f.mine)}</b></div></div>`).join("")}
+      ${d.friends.length ? "" : '<div class="wnote">No friends yet - send a request by username above.</div>'}</div>
+    <div class="cp-box" style="margin-top:12px"><h4>Friends' trades (24 h)</h4><div class="ffeed">${d.feed.length ? d.feed.map((x) => `<div class="r" data-open="${esc(x.mint)}">${avatarHtml(FR.byId[x.uid] || { uid: x.uid })}
+        <span><b>${esc(fname(x.uid))}</b> ${x.buy ? '<span class="green">bought</span>' : '<span class="red">sold</span>'} <b>$${esc(x.sym)}</b>${x.sol != null ? " · ◎" + x.sol.toFixed(2) : ""}${x.mcap_usd ? " at " + usd(x.mcap_usd) : ""}</span><small>${ago(x.ts)}</small></div>`).join("")
+        : '<div class="wnote">Nothing in the last 24 h (only coins the terminal tracks, and only friends who share their trades with you).</div>'}</div></div>`;
+}
+function friendPrefsModal(uid) {
+  const f = FR.byId[uid]; if (!f) return;
+  const m = document.createElement("div");
+  m.id = "fpmodal";
+  const rows = [["share_trades", "Share my trades with " + f.name, "buys / sells, entries, holdings (prices and %)", f.mine.share_trades],
+    ["share_watch", "Share my watchlist", "", f.mine.share_watch], ["show_capital", "Show my capital", "amounts in SOL, values of positions", f.mine.show_capital],
+    ["on_charts", `Show ${f.name} on charts and coins`, "markers, entry lines, badges", f.view.on_charts], ["alert_buy", `Alert me when ${f.name} buys`, "push to your ntfy topic", f.view.alert_buy]];
+  m.innerHTML = `<div class="kbox fprefs" style="max-width:440px">${avatarHtml(f, "md")} <b style="font-size:16px;margin-left:6px">${esc(f.name)}</b> <span class="muted">@${esc(f.username)}</span>
+    ${rows.map(([k, l, h, v]) => `<div class="row"><label for="fpp_${k}">${esc(l)}${h ? `<small>${h}</small>` : ""}</label><input type="checkbox" id="fpp_${k}" ${v ? "checked" : ""}></div>`).join("")}
+    <div class="row"><label for="fpp_nick">Nickname<small>only you see it</small></label><input type="text" id="fpp_nick" maxlength="30" value="${esc(f.view.nickname || "")}" style="width:150px"></div>
+    <div style="display:flex;justify-content:space-between;margin-top:12px"><button class="iconbtn" id="fppremove" style="color:var(--red)">Remove friend</button>
+      <span><button class="iconbtn" id="fppcancel">Cancel</button> <button class="iconbtn" id="fppsave">Save</button></span></div></div>`;
+  document.body.appendChild(m);
+  const close = () => m.remove();
+  m.onclick = (e) => { if (e.target === m) close(); };
+  $("#fppcancel").onclick = close;
+  $("#fppsave").onclick = async () => {
+    const prefs = { nickname: $("#fpp_nick").value.trim() };
+    rows.forEach(([k]) => prefs[k] = $("#fpp_" + k).checked);
+    if (await social("prefs", { uid, prefs })) { toast("Saved"); close(); loadFriends(); tick(); }
+  };
+  $("#fppremove").onclick = async () => {
+    if (!confirm(`Remove ${f.name} as a friend? You both stop seeing each other's trades.`)) return;
+    if (await social("remove", { uid })) { close(); loadFriends(); tick(); }
+  };
+}
+async function onFriendClick(e) {
+  const b = e.target.closest("[data-fp]");
+  if (!b) return;
+  const act = b.dataset.fp, uid = b.dataset.uid ? +b.dataset.uid : null;
+  if (act === "profile") return openSettings();
+  if (act === "add") {
+    const name = $("#fpadd").value.trim(); if (!name) return;
+    const j = await social("request", { username: name });
+    if (j) { toast(j.result === "accepted" ? "You are friends now" : "Request sent"); $("#fpadd").value = ""; loadFriends(); }
+    return;
+  }
+  if (act === "accept" || act === "decline") { if (await social(act, { uid })) { toast(act === "accept" ? "You are friends now" : "Declined"); loadFriends(); tick(); } return; }
+  if (act === "remove") { if (await social("remove", { uid })) loadFriends(); return; }
+  if (act === "prefs") friendPrefsModal(uid);
+}
+function shrinkImage(file) {
+  return new Promise((ok, bad) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      const c = document.createElement("canvas"), S = 128, k = Math.max(S / img.width, S / img.height);
+      c.width = c.height = S;
+      const w = img.width * k, h = img.height * k;
+      c.getContext("2d").drawImage(img, (S - w) / 2, (S - h) / 2, w, h);
+      URL.revokeObjectURL(url); ok(c.toDataURL("image/jpeg", 0.85));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); bad(); };
+    img.src = url;
+  });
+}
+function bindProfileSettings() {
+  let avatar;
+  $("#spfile").onchange = async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    try { avatar = await shrinkImage(f); $("#spav").innerHTML = avatarHtml({ avatar }, "md"); } catch (x) { toast("Could not read the picture", false); }
+  };
+  $("#spdel").onclick = () => { avatar = ""; $("#spav").innerHTML = avatarHtml({ name: (FR.me || {}).name }, "md"); };
+  $("#spsave").onclick = async () => {
+    const body = { username: $("#spuser").value.trim(), bio: $("#spbio").value.trim() };
+    if (!body.username) delete body.username;
+    if (avatar !== undefined) body.avatar = avatar;
+    if (await social("profile", body)) { toast("Profile saved"); loadFriends(); }
+  };
+  document.querySelectorAll("[data-fdef]").forEach((x) => x.onchange = () => {
+    const prefs = {}; document.querySelectorAll("[data-fdef]").forEach((y) => prefs[y.dataset.fdef] = y.checked);
+    social("defaults", { prefs }).then((j) => j && loadFriends());
+  });
+}
+
 function hideCoin(keepPage) {
   clearInterval(cp.timer); cp.timer = null;
   if (cp.chart) { cp.chart.remove(); cp.chart = null; cp.cs = cp.vs = null; }
@@ -1070,9 +1287,10 @@ function drawCandles(d) {
   cp.lastT = bars[bars.length - 1].time;
   drawMarkers(bars, d);
 }
-function drawMarkers(bars, d) {                              // graduation + your own buys / sells
+function drawMarkers(bars, d) {                              // graduation + your own buys / sells + friends' trades
   const trades = (cp.data && cp.data.mine && cp.data.mine.trades) || [];
-  const key = bars.length + "|" + bars[0].time + "|" + trades.length + "|" + d.tf;
+  const ftr = ((cp.data && cp.data.fpos) || []).flatMap((f) => (f.trades || []).map((t) => [f.uid, ...t]));
+  const key = bars.length + "|" + bars[0].time + "|" + trades.length + "|" + ftr.length + "|" + d.tf;
   if (key === cp.markKey) return;
   cp.markKey = key;
   const at = (ts) => { const t = Math.floor(ts / d.tf) * d.tf + TZO, b = bars.find((x) => x.time >= t); return b ? b.time : null; };
@@ -1083,13 +1301,21 @@ function drawMarkers(bars, d) {                              // graduation + you
     m.push(kind === "buy" ? { time: t, position: "belowBar", color: css.getPropertyValue("--green").trim(), shape: "arrowUp", text: "B " + solAmt.toFixed(2) }
                           : { time: t, position: "aboveBar", color: css.getPropertyValue("--red").trim(), shape: "arrowDown", text: "S " + solAmt.toFixed(2) });
   }
+  const perF = {}; ftr.forEach((x) => perF[x[0]] = (perF[x[0]] || 0) + 1);
+  for (const [fid, ts, buy, solAmt] of ftr) {
+    const t = at(ts); if (!t) continue;
+    const many = perF[fid] > 12;                             // a very active friend: dots only, no labels
+    m.push({ time: t, position: buy ? "belowBar" : "aboveBar", color: buy ? "#f472b6" : "#c084fc", shape: "circle",
+             text: many ? "" : (buy ? "B " : "S ") + fname(fid) + (solAmt != null ? " " + solAmt.toFixed(2) : "") });
+  }
   m.sort((a, b) => a.time - b.time);
   cp.cs.setMarkers(m);
 }
 function drawAlertLines(alerts) {
   if (!cp.cs) return;
   const entry = cp.data && cp.data.mine && cp.data.mine.amount > 0 ? cp.data.mine.entry_mcap_usd : null;
-  const key = cp.mode + "|" + alerts.map((a) => a.id).join(",") + "|" + (entry ? entry.toFixed(0) : "");
+  const fen = ((cp.data && cp.data.fpos) || []).filter((f) => f.holds && f.entry_mcap_usd);
+  const key = cp.mode + "|" + alerts.map((a) => a.id).join(",") + "|" + (entry ? entry.toFixed(0) : "") + "|" + fen.map((f) => f.uid + ":" + f.entry_mcap_usd.toFixed(0)).join(",");
   if (key === cp.lineKey) return;
   cp.lines.forEach((l) => cp.cs.removePriceLine(l)); cp.lines = [];
   for (const a of alerts) {
@@ -1099,6 +1325,8 @@ function drawAlertLines(alerts) {
   }
   if (entry) cp.lines.push(cp.cs.createPriceLine({ price: cp.mode === "mcap" ? entry : entry / 1e9, color: "#a78bfa", lineWidth: 1, lineStyle: 0,
                                                    axisLabelVisible: true, title: "your entry" }));
+  for (const f of fen) cp.lines.push(cp.cs.createPriceLine({ price: cp.mode === "mcap" ? f.entry_mcap_usd : f.entry_mcap_usd / 1e9, color: "#f472b6",
+                                                             lineWidth: 1, lineStyle: 1, axisLabelVisible: false, title: fname(f.uid) + " entry" }));
   cp.lineKey = key;
 }
 
@@ -1173,6 +1401,7 @@ function renderCoin() {
     `<div class="note" style="margin-top:4px"><b>${esc(f.name)}</b>${f.tag ? `<span class="ntag">${NOTE_TAGS[f.tag]}</span>` : ""}${f.text ? `<span>${esc(f.text)}</span>` : ""}</div>`).join("") : "";
   $("#cpntags").innerHTML = Object.entries(NOTE_TAGS).map(([k, v]) => `<button data-ntag="${k}" class="${cp.noteTag === k ? "on" : ""}">${v}</button>`).join("");
   $("#cpntags").querySelectorAll("[data-ntag]").forEach((b) => b.onclick = () => { cp.noteTag = cp.noteTag === b.dataset.ntag ? "" : b.dataset.ntag; saveNote(); });
+  renderCoinFriends(d);
   const mn = d.mine;
   $("#cpminebox").hidden = !mn;
   if (mn) $("#cpmine").innerHTML = [["Holding", mn.amount > 0 ? `${(+mn.amount).toLocaleString(undefined, { maximumFractionDigits: 0 })} · ${money(mn.value_usd)}` : "sold out"],
@@ -1591,7 +1820,7 @@ function renderSignalRows(rows, sel) {
 }
 
 // ---------- keyboard shortcuts (PC) ----------
-const KEYS = [["Everywhere", [["?", "this overview"], ["S", "signals"], ["P", "portfolio"], ["J", "trading journal"], [",", "settings"], ["/", "search (Filtered / Hidden / Watchlist)"],
+const KEYS = [["Everywhere", [["?", "this overview"], ["S", "signals"], ["P", "portfolio"], ["J", "trading journal"], ["F", "friends"], [",", "settings"], ["/", "search (Filtered / Hidden / Watchlist)"],
                               ["Ctrl+V", "open the coin whose CA you paste"], ["Esc", "back / close"]]],
               ["Coin page", [["C", "copy CA"], ["A", "open on Axiom (also copies the CA)"], ["W", "add to / remove from watchlist"], ["X", "hide the coin and go back"],
                              ["1 – 7", "timeframe 1s … 1h"], ["M", "MCap / price"], ["T / R / H / L / D", "trades / top traders / holders / linked wallets / dev history"]]]];
@@ -1627,6 +1856,7 @@ document.addEventListener("keydown", (e) => {
   if (k === "s" || k === "S") { location.hash = "#signals"; return; }
   if (k === "p" || k === "P") { location.hash = "#wallet"; return; }
   if (k === "j" || k === "J") { location.href = "/journal/"; return; }
+  if (k === "f" || k === "F") { location.hash = "#friends"; return; }
   if (k === ",") return openSettings();
   if (k === "/" && $("#search").classList.contains("show") && !cp.mint) { e.preventDefault(); $("#q").focus(); }
 });
@@ -1658,20 +1888,20 @@ document.addEventListener("click", (e) => {
   m.onclick = (ev) => { const x = ev.target.closest("[data-snz]"); if (x) { snooze(b.dataset.snooze, +x.dataset.snz); m.remove(); } };
   setTimeout(() => document.body.appendChild(m), 0);
 });
-const BN = { home: ["home", "Home"], watch: ["star", "Watchlist"], signals: ["signal", "Signals"], wallet: ["wallet", "Portfolio"], paste: ["paste", "Paste CA"], settings: ["gear", "Settings"] };
+const BN = { home: ["home", "Home"], watch: ["star", "Watchlist"], signals: ["signal", "Signals"], wallet: ["wallet", "Portfolio"], friends: ["users", "Friends"], paste: ["paste", "Paste"], settings: ["gear", "Settings"] };
 document.querySelectorAll("[data-bn]").forEach((b) => { const [i, l] = BN[b.dataset.bn]; b.innerHTML = ic(i) + l; });
 $("#bnav").onclick = (e) => {
   const b = e.target.closest("[data-bn]"); if (!b) return;
   const k = b.dataset.bn;
   if (k === "paste") return pasteFromClipboard();
   if (k === "settings") return openSettings();
-  if (k === "signals" || k === "wallet") { location.hash = "#" + k; return; }
+  if (k === "signals" || k === "wallet" || k === "friends") { location.hash = "#" + k; return; }
   if (location.hash) history.pushState(null, "", location.pathname), route();
   tab = k === "watch" ? "watch" : "all"; try { localStorage.setItem("swedenTab", tab); } catch (x) {}
   render(); tick(); window.scrollTo({ top: 0 });
 };
 function markBnav() {
-  const h = location.hash, k = h === "#signals" ? "signals" : h === "#wallet" ? "wallet" : h.startsWith("#coin/") ? "" : tab === "watch" ? "watch" : "home";
+  const h = location.hash, k = h === "#signals" ? "signals" : h === "#wallet" ? "wallet" : h === "#friends" ? "friends" : h.startsWith("#coin/") ? "" : tab === "watch" ? "watch" : "home";
   document.querySelectorAll("[data-bn]").forEach((b) => b.classList.toggle("on", b.dataset.bn === k));
 }
 window.addEventListener("hashchange", markBnav);
@@ -1904,7 +2134,19 @@ function settingsHtml(st) {
     return `<div class="row"><label for="${id}">${label}${help ? `<small>${help}</small>` : ""}</label>${input}${unit ? `<span class="unit">${unit}</span>` : ""}</div>`;
   };
   return `<div class="sec"><h3>Account</h3><div class="row"><label>${esc(state.email)}</label><button class="iconbtn" id="slogout">Log out</button></div>
-      <div class="row"><label for="s_display_name">Name for friends<small>shown next to notes you share</small></label><input type="text" id="s_display_name" value="${esc(st.display_name || "")}" maxlength="24" autocomplete="off"></div>
+      <div class="row"><label for="s_display_name">Display name<small>what friends see (else your username)</small></label><input type="text" id="s_display_name" value="${esc(st.display_name || "")}" maxlength="24" autocomplete="off"></div></div>
+    <div class="sec"><h3>Profile &amp; friends</h3>
+      <div class="row"><label>Picture<small>shown to friends; shrunk to 128 px</small></label><span id="spav">${avatarHtml(FR.me || {}, "md")}</span>
+        <label class="iconbtn" style="cursor:pointer">Choose<input type="file" id="spfile" accept="image/*" hidden></label><button class="iconbtn" id="spdel" title="Remove the picture">✕</button></div>
+      <div class="row"><label for="spuser">Username<small>friends add you with it · a-z, 0-9, _</small></label><input type="text" id="spuser" value="${esc((FR.me || {}).username || "")}" maxlength="20" autocomplete="off" spellcheck="false" placeholder="e.g. leo_trades"></div>
+      <div class="row"><label for="spbio">Bio</label><input type="text" id="spbio" value="${esc((FR.me || {}).bio || "")}" maxlength="160" autocomplete="off"></div>
+      <div class="row"><label></label><button class="iconbtn" id="spsave">Save profile</button></div>
+      <div class="wnote" style="margin:8px 0 4px">For new friends (each friend can be changed on the Friends page):</div>
+      ${[["share_trades", "Share my trades", "buys / sells, entries and what I hold (prices and %)"], ["share_watch", "Share my watchlist", ""],
+         ["show_capital", "Show my capital", "amounts in SOL and position values - off = friends only see % and market caps"],
+         ["on_charts", "Show friends on charts and coins", "their markers, entry lines and badges"], ["alert_buy", "Alert when a friend buys", "push to your ntfy topic"]]
+        .map(([k, l, h]) => `<div class="row"><label for="sfd_${k}">${l}${h ? `<small>${h}</small>` : ""}</label><input type="checkbox" id="sfd_${k}" data-fdef="${k}" ${(FR.defaults || {})[k] ? "checked" : ""}></div>`).join("")}</div>
+    <div class="sec"><h3>Alerts &amp; tests</h3>
       <div class="row"><label>Test alert<small>flash, sound and a push to your ntfy topic</small></label><button class="iconbtn" id="stest">Send test</button></div>
       <div class="row"><label>Daily summary<small>what the daily push would say right now</small></label><button class="iconbtn" id="sdaily">Preview</button></div>
       <pre id="sdailyout" style="display:none;white-space:pre-wrap;font:12px/1.4 ui-monospace,monospace;color:var(--muted);background:var(--panel2);border-radius:8px;padding:8px;margin:4px 0 0"></pre></div>` +
@@ -1948,6 +2190,7 @@ function openSettings(st) {
   $("#sbody").innerHTML = settingsHtml(draft);
   $("#settings").classList.add("show");
   $("#stest").onclick = () => $("#testpush").click();
+  bindProfileSettings();
   const trk = async (wallet, label, on) => {
     const j = await (await fetch("/api/track", { method: "POST", headers: { "Content-Type": "application/json", ...AH() }, body: JSON.stringify({ wallet, label, on }) })).json();
     if (!j.ok) return toast(j.error || "Not saved", false);
@@ -2016,7 +2259,9 @@ $("#sreset").onclick = () => {                              // the starting sett
 };
 
 let tickSeq = 0;
+let frTimer = null;
 async function tick() {
+  if (!frTimer && userToken) { frTimer = setInterval(loadFriends, 60000); loadFriends(); }
   if (!token) return showLogin();
   if (!userToken) return showAccount();
   const all = NEEDS_ALL.includes(tab), my = ++tickSeq;
@@ -2125,6 +2370,8 @@ $("#pasteca").onclick = pasteFromClipboard;
 $("#opensignals").innerHTML = ic("signal") + "<span>Signals</span>";
 $("#opensignals").onclick = () => { location.hash = "#signals"; };
 $("#openjournal").innerHTML = ic("book") + "<span>Journal</span>";
+$("#openfriends").innerHTML = ic("users") + "<span>Friends</span>";
+$("#openfriends").onclick = () => { location.hash = "#friends"; };
 $("#openrecent").innerHTML = ic("clock"); $("#openrecent").onclick = showRecent;
 $("#q").addEventListener("input", (e) => { query = e.target.value.trim().toLowerCase(); $("#search").classList.toggle("has", !!query); render(); });
 $("#qclear").onclick = () => { $("#q").value = ""; query = ""; $("#search").classList.remove("has"); render(); $("#q").focus(); };

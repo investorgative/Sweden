@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowLeft, BookOpen, CalendarDays, ChartNoAxesCombined, Eye, EyeOff, House, LayoutDashboard, Plus, Radar, Search, Settings, Trophy, Menu, X } from 'lucide-react'
+import { ArrowLeft, Users, BookOpen, CalendarDays, ChartNoAxesCombined, Eye, EyeOff, House, LayoutDashboard, Plus, Radar, Search, Settings, Trophy, Menu, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Logo } from './Logo'
 import { useJournal, useSettings, type RangeKey } from '@/store/useJournal'
@@ -111,6 +111,9 @@ export function Layout() {
       </div>
       <a href="../" className="mx-3 mb-4 flex items-center gap-2 rounded-xl border border-line px-3 py-2 text-[12.5px] text-ink-3 transition hover:border-gold/30 hover:text-ink">
         <ArrowLeft size={14} /> Back to the terminal
+      </a>
+      <a href="../#friends" className="mx-3 -mt-2 mb-4 flex items-center gap-2 rounded-xl border border-line px-3 py-2 text-[12.5px] text-ink-3 transition hover:border-gold/30 hover:text-ink">
+        <Users size={14} /> Friends
       </a>
       <nav className="flex-1 space-y-1 px-3">
         {NAV.map((n) => (

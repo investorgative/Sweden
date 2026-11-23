@@ -76,6 +76,8 @@ export interface WalletStart {
 
 export interface CircleRow {
   name: string
+  avatar?: string
+  username?: string
   me: boolean
   ts: number
   score: number

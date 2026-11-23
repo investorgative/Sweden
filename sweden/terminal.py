@@ -37,6 +37,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 sys.path.insert(0, os.path.dirname(__file__))
 import accounts as A
 import journal as JN
+import social as SO
 import replay as R
 import signals as SG
 import wallet as WL
@@ -325,6 +326,9 @@ class Terminal:
         self.linked_cache = {}
         self.repair_calls = collections.deque()          # times of Helius calls by the repair (daily budget)
         self._watched = set()
+        self.uwallets = {}                               # wallet address -> user id (members' own wallets)
+        self.utr = collections.defaultdict(lambda: collections.defaultdict(list))   # uid -> mint -> [trade]
+        self.fr_alert_at = {}
 
     # ---------- data ----------
     def files(self):
@@ -392,6 +396,8 @@ class Terminal:
                     self.check_danger(c, r[5], r[8])
                 if r[5] in self.acc.tracked_idx:
                     self.check_tracked(c, r[5], r[6], r[7], mc)
+                if r[5] in self.uwallets:
+                    self.member_trade(c, r[5], r[6], r[7], r[8], mc, r[3])
         elif kind == "G":
             if c.S is not None:
                 c.feat = c.S.features()
@@ -430,6 +436,8 @@ class Terminal:
                     self.check_danger(c, r[5], base)
                 if r[5] in self.acc.tracked_idx:
                     self.check_tracked(c, r[5], buy, quote, Q / B * 1e6)
+                if r[5] in self.uwallets:
+                    self.member_trade(c, r[5], buy, quote, base, Q / B * 1e6, r[3])
 
     def price_update(self, c, p, ts, slot):
         b = c.pts.get(ts // 5)                          # swaps arrive over several connections, not in order
@@ -524,6 +532,130 @@ class Terminal:
             c.track_at[k] = time.time()
             self.alert(c, uid, "track", f"{label} {'bought' if buy else 'sold'} ${c.sym} for ◎{lamports / 1e9:.2f} at mcap {usd_text(mcap_sol * self.usd)}")
 
+    # ---------- friends ----------
+    def refresh_uwallets(self):
+        with self.wallets.lock:
+            rows = self.wallets.db.execute("SELECT uid, address FROM wallets WHERE address IS NOT NULL").fetchall()
+        self.uwallets = {a: u for u, a in rows if a}
+
+    def member_trade(self, c, wallet, buy, lamports, tokens, mcap_sol, ts):
+        """A member's wallet traded (from the live feed). Kept for friends' views; alerts friends who asked for it."""
+        uid = self.uwallets.get(wallet)
+        if uid is None:
+            return
+        lst = self.utr[uid][c.mint]
+        tokens = tokens / 1e6                                # raw units -> tokens (pump.fun coins: 6 decimals)
+        if any(abs(x[0] - ts) < 1e-6 and x[1] == buy and abs(x[3] - tokens) < 1e-9 for x in lst[-5:]):
+            return                                           # the same trade from a second connection
+        lst.append((ts, bool(buy), lamports / 1e9, tokens, mcap_sol))
+        if not self.live or c.repairing or not buy:
+            return
+        users = self.acc.users()
+        for fid in self.social.friends(uid):
+            sh = self.social.share(uid, fid)
+            if not sh or not sh["share_trades"] or fid not in users:
+                continue
+            v = self.social.view(fid, uid)
+            if not v["alert_buy"]:
+                continue
+            k = (fid, uid, c.mint)
+            if time.time() - self.fr_alert_at.get(k, 0) < 120:
+                continue
+            self.fr_alert_at[k] = time.time()
+            size = f" for ◎{lamports / 1e9:.2f}" if sh["show_capital"] else ""
+            self.alert(c, fid, "friend", f"{self.social.name(uid, users, fid)} bought ${c.sym}{size} at mcap {usd_text(mcap_sol * self.usd)}")
+
+    def position(self, uid, mint, mcap_usd=None):
+        """A member's position in a coin: from the recorded trades (live feed) and, if known, the wallet balance."""
+        tr = self.utr.get(uid, {}).get(mint) or []
+        b = self.wallets.brief(uid).get(mint) if uid in self.wallets.live else None
+        if not tr and not (b and (b["amount"] > 0 or b["trades"])):
+            return None
+        bought = sum(x[3] for x in tr if x[1]); sold = sum(x[3] for x in tr if not x[1])
+        cost = sum(x[2] for x in tr if x[1]); back = sum(x[2] for x in tr if not x[1])
+        entry_sol = (sum(x[4] * x[3] for x in tr if x[1]) / bought) if bought > 0 else None
+        if entry_sol is None and b and b.get("entry_mcap_sol"):
+            entry_sol = b["entry_mcap_sol"]
+        if b is not None and "amount" in b:
+            holds = b["amount"] > 0 and (bought == 0 or b["amount"] > bought * 0.02 or bought - sold > bought * 0.02)
+            amount = b["amount"]
+        else:
+            holds, amount = bought > 0 and bought - sold > bought * 0.02, max(0.0, bought - sold)
+        entry = entry_sol * self.usd if entry_sol else None
+        trades = tr[-60:] or [(ts, k == "buy", sol, None, None) for ts, k, sol in (b or {}).get("trades", [])[-60:]]
+        return dict(holds=holds, entry_mcap_usd=entry, pnl=(mcap_usd / entry - 1) if entry and mcap_usd else None,
+                    cost_sol=cost, back_sol=back, value_usd=amount * mcap_usd / 1e9 if mcap_usd and holds else None,
+                    last=max((x[0] for x in trades), default=None),
+                    trades=[(x[0], x[1], x[2], x[4] * self.usd if x[4] else None) for x in trades])
+
+    def friend_views(self, uid):
+        """[(fid, share, view)] of friends whose coins this user wants to see."""
+        out = []
+        for fid in self.social.friends(uid):
+            sh = self.social.share(fid, uid)
+            if sh and (sh["share_trades"] or sh["share_watch"]) and self.social.view(uid, fid)["on_charts"]:
+                out.append((fid, sh))
+        return out
+
+    def coin_friends(self, uid, mint, mcap_usd, fv, users, with_trades=False):
+        """What the friends do in this coin, as far as each shares it: holds / bought / watching, entry, amounts."""
+        out = []
+        for fid, sh in fv:
+            row = dict(uid=fid)
+            if sh["share_trades"]:
+                p = self.position(fid, mint, mcap_usd)
+                if p:
+                    row.update(holds=p["holds"], entry_mcap_usd=p["entry_mcap_usd"], pnl=p["pnl"], last=p["last"],
+                               traded=True)
+                    if sh["show_capital"]:
+                        row.update(cost_sol=p["cost_sol"], back_sol=p["back_sol"], value_usd=p["value_usd"])
+                    if with_trades:
+                        row["trades"] = [(ts, b, sol if sh["show_capital"] else None, mc) for ts, b, sol, mc in p["trades"]]
+            if sh["share_watch"] and mint in (users.get(fid) or {}).get("watch", ()):
+                row["watching"] = True
+            if len(row) > 1:
+                out.append(row)
+        return out
+
+    def friends_page(self, uid):
+        """Everything for the Friends page: me, friends (what they share with me), requests, feed, journal stats."""
+        users, so = self.acc.users(), self.social
+        circle = self.journal.circle()
+        friends, feed = [], []
+        with self.lock:
+            coins = {m: (c.sym, c.name, self.mcap_usd(c) if c.price else None) for m, c in self.coins.items()}
+        for fid in so.friends(uid):
+            if fid not in users:
+                continue
+            sh, mine, view = so.share(fid, uid), so.share(uid, fid), so.view(uid, fid)
+            row = dict(so.card(fid, users, uid), share=sh, mine=mine, view=view, holds=[], watch=[],
+                       journal=(circle.get(fid) or (None,))[0])
+            if sh["share_trades"]:
+                for mint in set(self.utr.get(fid, {})) | set(self.wallets.brief(fid) if fid in self.wallets.live else {}):
+                    sym, name, mc = coins.get(mint, (None, None, None))
+                    p = self.position(fid, mint, mc)
+                    if not p:
+                        continue
+                    if p["holds"] and sym:
+                        h = dict(mint=mint, sym=sym, name=name, pnl=p["pnl"], entry_mcap_usd=p["entry_mcap_usd"], mcap_usd=mc)
+                        if sh["show_capital"]:
+                            h["value_usd"] = p["value_usd"]
+                        row["holds"].append(h)
+                    for ts, buy, sol, mcx in p["trades"]:
+                        if ts and ts > time.time() - 86400 and sym:
+                            feed.append(dict(uid=fid, ts=ts, buy=buy, mint=mint, sym=sym, mcap_usd=mcx,
+                                             sol=sol if sh["show_capital"] else None))
+            row["n_holds"] = len(row["holds"])
+            row["holds"] = sorted(row["holds"], key=lambda h: -(h.get("mcap_usd") or 0))[:24]   # the biggest coins first
+            if sh["share_watch"]:
+                row["watch"] = [dict(mint=m, sym=coins[m][0]) for m in users[fid]["watch"] if m in coins][:30]
+            friends.append(row)
+        req_in = [dict(so.card(a, users), ts=ts) for a, b, ts in so.requests if b == uid and a in users]
+        req_out = [dict(so.card(b, users), ts=ts) for a, b, ts in so.requests if a == uid and b in users]
+        feed.sort(key=lambda x: -x["ts"])
+        return dict(me=so.card(uid, users), friends=friends, req_in=req_in, req_out=req_out, feed=feed[:80],
+                    defaults=so.defaults(uid), has_wallet=bool(self.wallets.address(uid)))
+
     def watch_graduated(self, c):
         if not self.live:
             return
@@ -617,7 +749,7 @@ class Terminal:
             req = urllib.request.Request(f"https://ntfy.sh/{urllib.parse.quote(topic)}",
                                          data=(text + ("\n" + c.mint if c else "")).encode(),
                                          headers={"Title": "Sweden: " + {"entry": "ENTRY", "new": "new coin", "px": "price alert",
-                                                                          "danger": "DANGER", "grad": "graduated", "track": "tracked wallet"}.get(kind, kind),
+                                                                          "danger": "DANGER", "grad": "graduated", "track": "tracked wallet", "friend": "friend bought"}.get(kind, kind),
                                                   "Priority": "urgent" if kind == "danger" else "high" if kind in ("entry", "px") else "default",
                                                   **({"Click": f"https://axiom.trade/meme/{c.pool or c.mint}?chain=sol"} if c else {})})
             urllib.request.urlopen(req, timeout=10).read()
@@ -858,11 +990,12 @@ class Terminal:
         """Friends who share their journal score (opt-in): name, score, level, win rate, streak - never amounts."""
         users, out = self.acc.users(), []
         for u2, (d, ts) in self.journal.circle().items():
-            if u2 not in users:
-                continue
+            if u2 not in users or (u2 != uid and not self.social.are_friends(uid, u2)):
+                continue                                         # friends only
             s = users[u2].get("settings", {})
-            name = s.get("display_name") or users[u2]["email"].split("@")[0]
-            out.append(dict(d, name=name[:40], me=u2 == uid, ts=ts))
+            name = self.social.name(u2, users, uid)
+            prof = self.social.profiles.get(u2) or {}
+            out.append(dict(d, name=name[:40], me=u2 == uid, ts=ts, avatar=prof.get("avatar") or "", username=prof.get("username") or ""))
         return out
 
     def held_mints(self):
@@ -1276,18 +1409,22 @@ class Terminal:
                                  ath_usd=ath * usd if ath else None))
             holders = [dict(wallet=w, share=t / R.SUPPLY, tags=tags(w)) for w, t in held[:20]]
         mine = self.mine(self.wallets.brief(uid), mint, info["mcap_usd"], with_trades=True)
+        fv = self.friend_views(uid)
+        fpos = self.coin_friends(uid, mint, info["mcap_usd"], fv, self.acc.users(), with_trades=True) if fv else []
         lab = self.acc.users()[uid]["tracked"]
         for row in trades + holders + traders:
             if row["wallet"] in lab:
                 row["label"] = lab[row["wallet"]]
         info["note"] = self.acc.users()[uid]["notes"].get(mint)
-        info["friends"] = [n for n in self.acc.shared_notes.get(mint, []) if n["uid"] != uid]
+        info["friends"] = [dict(n, name=self.social.name(n["uid"], self.acc.users(), uid))
+                           for n in self.acc.shared_notes.get(mint, [])
+                           if n["uid"] != uid and self.social.are_friends(uid, n["uid"])]      # shared notes: friends only
         with self.lock:
             c = self.coins.get(mint)
             info["res"] = list(c.res) if c and c.res else None
             info["quality"] = dict(breaks=self.chain_breaks(c), repair=c.repair) if c else None
             info["fee"] = c.fee if c else None
-        return dict(info=info, trades=trades, holders=holders, sol_usd=self.usd, traders=traders, pressure=press, dev=devs[:30], mine=mine,
+        return dict(info=info, trades=trades, holders=holders, sol_usd=self.usd, traders=traders, pressure=press, dev=devs[:30], mine=mine, fpos=fpos,
                     alerts=[a for a in self.acc.px_list(uid) if a["mint"] == mint])
 
     def candles(self, mint, tf):
@@ -1350,6 +1487,8 @@ class Terminal:
         u = self.acc.users()[uid]
         brief = self.wallets.brief(uid)
         s = u["settings"]
+        users = self.acc.users()
+        fv = self.friend_views(uid)
         out, counts, radar = [], {"filtered": 0, "hidden": 0, "waiting": 0}, []
         with self.lock:
             for c in self.coins.values():
@@ -1385,7 +1524,8 @@ class Terminal:
                                 traders=f.get("traders")),
                     live=c.H.metrics(), meta=c.meta or {}, mine=self.mine(brief, c.mint, self.mcap_usd(c)),
                     note=u["notes"].get(c.mint), snoozed=u["snooze"].get(c.mint, 0) > now,
-                    smart=sum(1 for w in self.smart_set if c.H.hold.get(w, 0) > 0)))
+                    smart=sum(1 for w in self.smart_set if c.H.hold.get(w, 0) > 0),
+                    friends=self.coin_friends(uid, c.mint, self.mcap_usd(c), fv, users) if fv else []))
             alerts = list(self.alerts[uid])
         self.wallets.touch(uid)
         try:
@@ -1513,6 +1653,8 @@ def serve(t, port):
                 self.send(200, {"wallets": t.smart_list})
             elif u.path == "/api/journal":
                 self.send(200, t.journal.payload(uid, t))
+            elif u.path == "/api/friends":
+                self.send(200, t.friends_page(uid))
             elif u.path == "/api/journal/circle":
                 self.send(200, {"circle": t.journal_circle(uid)})
             elif u.path == "/api/wallet":
@@ -1552,7 +1694,7 @@ def serve(t, port):
             uid = self.auth()
             if uid is False:
                 return
-            b = self.body(2_000_000 if p.startswith("/api/journal/") else 4000)
+            b = self.body(2_000_000 if p.startswith("/api/journal/") else 100_000 if p.startswith("/api/social/") else 4000)
             if p == "/api/settings":
                 st = acc.save_settings(uid, b.get("settings"))
                 with t.lock:                             # new dip settings: restart this user's stages quietly
@@ -1592,6 +1734,27 @@ def serve(t, port):
                     return self.send(200, {"ok": True})
                 except (KeyError, TypeError, ValueError):
                     return self.send(400, {"ok": False})
+            if p.startswith("/api/social/"):
+                so, act = t.social, p.rsplit("/", 1)[1]
+                fid = b.get("uid")
+                fid = int(fid) if isinstance(fid, (int, str)) and str(fid).isdigit() else None
+                if act == "profile":
+                    ok, err = so.set_profile(uid, **{k: b[k] for k in ("username", "bio", "avatar", "color") if k in b})
+                    return self.send(200 if ok else 400, {"ok": ok, "error": err})
+                if act == "request":
+                    ok, msg = so.request(uid, str(b.get("username", ""))[:40])
+                    return self.send(200 if ok else 400, {"ok": ok, "error": None if ok else msg, "result": msg if ok else None})
+                if act in ("accept", "decline") and fid is not None:
+                    return self.send(200, {"ok": so.answer(uid, fid, act == "accept")})
+                if act == "remove" and fid is not None:
+                    so.remove(uid, fid)
+                    return self.send(200, {"ok": True})
+                if act == "prefs" and fid is not None and isinstance(b.get("prefs"), dict):
+                    return self.send(200, {"ok": so.set_fprefs(uid, fid, b["prefs"])})
+                if act == "defaults" and isinstance(b.get("prefs"), dict):
+                    so.set_defaults(uid, b["prefs"])
+                    return self.send(200, {"ok": True})
+                return self.send(400, {"ok": False, "error": "bad request"})
             if p.startswith("/api/journal/"):
                 act = p.rsplit("/", 1)[1]
                 tid = str(b.get("tid", ""))[:80]
@@ -1619,6 +1782,7 @@ def serve(t, port):
                     return self.send(400, {"ok": False})
             if p == "/api/wallet/set":
                 ok = t.wallets.set_address(uid, str(b.get("address", "")))
+                t.refresh_uwallets()
                 return self.send(200 if ok else 400, {"ok": ok, "error": None if ok else "that is not a Solana address"})
             if p == "/api/wallet/hide":
                 try:
@@ -1676,6 +1840,8 @@ def main():
     t.wallets = WL.Wallets(os.path.join(R.DATA, "wallets.db"), HELIUS_KEY_FILE, t.token_price)
     t.wallets.sol_usd = lambda: t.usd
     t.journal = JN.Journal(os.path.join(R.DATA, "journal.db"))
+    t.social = SO.Social(os.path.join(R.DATA, "social.db"))
+    t.refresh_uwallets()
     for target in (t.loop, t.meta_worker, t.price_worker, t.link_worker, t.wallets.worker, t.daily_worker, t.smart_worker,
                    t.repair_worker, t.journal_worker):
         threading.Thread(target=target, daemon=True).start()

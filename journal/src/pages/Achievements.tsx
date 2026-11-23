@@ -15,7 +15,8 @@ type Filter = 'all' | 'unlocked' | 'locked'
 const CATS = ['All', 'Profit', 'Consistency', 'Discipline', 'Skill', 'Journey'] as const
 const hueOf = (name: string) => [...name].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 360, 7)
 
-function Avatar({ name, hue, size = 36 }: { name: string; hue: number; size?: number }) {
+function Avatar({ name, hue, size = 36, src }: { name: string; hue: number; size?: number; src?: string }) {
+  if (src) return <img src={src} alt="" className="shrink-0 rounded-full object-cover" style={{ width: size, height: size }} />
   const ini = name
     .split(' ')
     .map((p) => p[0])
@@ -41,7 +42,6 @@ export function Achievements() {
     if (isDemo) return
     api.circle().then((r) => setCircle(r.circle)).catch(() => {})
   }, [isDemo, settings.shareCircle])
-  const [invited, setInvited] = useState(false)
   const badgeRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
   const all = lifetime.achievements
@@ -55,15 +55,16 @@ export function Achievements() {
   const score = traderScore(lifetime.summary).score
 
   const board = useMemo(() => {
-    const me = { name: `${settings.traderName || 'You'} (you)`, handle: 'me', hue: 42, level: xp.level.level, title: xp.level.title, score, winRate: lifetime.summary.winRate, consistency: lifetime.summary.dayWinRate, streak: Math.max(0, lifetime.summary.currentStreak), me: true }
-    const others = circle.filter((c) => !c.me).map((c) => ({ name: c.name, handle: `u-${c.name}`, hue: hueOf(c.name), level: c.level, title: c.title, score: c.score, winRate: c.winRate, consistency: c.consistency ?? 0, streak: c.streak, me: false }))
+    const meRow = circle.find((c) => c.me)
+    const me = { name: `${settings.traderName || 'You'} (you)`, src: meRow?.avatar || undefined, handle: 'me', hue: 42, level: xp.level.level, title: xp.level.title, score, winRate: lifetime.summary.winRate, consistency: lifetime.summary.dayWinRate, streak: Math.max(0, lifetime.summary.currentStreak), me: true }
+    const others = circle.filter((c) => !c.me).map((c) => ({ name: c.name, src: c.avatar || undefined, handle: `u-${c.name}`, hue: hueOf(c.name), level: c.level, title: c.title, score: c.score, winRate: c.winRate, consistency: c.consistency ?? 0, streak: c.streak, me: false }))
     return [...others, me].sort((a, b) => b.score - a.score)
   }, [settings, xp, score, lifetime.summary, circle])
   const feed = useMemo(
     () =>
       circle
         .filter((c) => !c.me)
-        .flatMap((c) => (c.achievements || []).map((a) => ({ who: c.name, hue: hueOf(c.name), ...a })))
+        .flatMap((c) => (c.achievements || []).map((a) => ({ who: c.name, src: c.avatar || undefined, hue: hueOf(c.name), ...a })))
         .sort((a, b) => (b.at || '').localeCompare(a.at || ''))
         .slice(0, 12),
     [circle],
@@ -254,18 +255,18 @@ export function Achievements() {
           <CardHeader
             icon={<Users size={15} />}
             title="Your trading circle"
-            subtitle={settings.shareCircle ? 'Friends on this terminal who share - ranked by trader score, never amounts' : 'Turn on "Share my score" in Settings to appear here and see the others'}
+            subtitle={settings.shareCircle ? 'Your friends who share their score - ranked by trader score, never amounts' : 'Turn on "Share my score" in Settings to appear here and see your friends'}
             right={
-              <Button variant="outline" className="py-1.5 text-xs" onClick={() => (navigator.clipboard?.writeText(`${location.origin}/`), setInvited(true), setTimeout(() => setInvited(false), 1800))}>
-                {invited ? <Check size={13} /> : <UserPlus size={13} />} {invited ? 'Link copied' : 'Invite'}
-              </Button>
+              <a href="../#friends" className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs text-ink-2 hover:border-gold/40">
+                <UserPlus size={13} /> Add friends
+              </a>
             }
           />
           <div className="p-3 sm:p-4">
             {board.map((f, i) => (
               <motion.div key={f.handle} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }} className={cx('flex items-center gap-3 rounded-2xl px-3 py-3', f.me && 'border border-gold/25 bg-gold/[0.06]')}>
                 <span className={cx('w-6 text-center font-display text-xl', i === 0 ? 'text-gold' : 'text-ink-4')}>{i === 0 ? <Crown size={16} className="mx-auto" /> : i + 1}</span>
-                <Avatar name={f.name} hue={f.hue} />
+                <Avatar name={f.name} hue={f.hue} src={f.src} />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-[13.5px] font-medium">{f.name}</div>
                   <div className="text-[11px] text-ink-4">
@@ -299,7 +300,7 @@ export function Achievements() {
             {!feed.length && <div className="px-3 py-6 text-center text-[12.5px] text-ink-4">Nothing yet - unlocks of friends who share show up here.</div>}
             {feed.map((f, i) => (
               <div key={i} className="flex items-center gap-3 rounded-2xl px-3 py-2.5 transition hover:bg-white/[0.02]">
-                <Avatar name={f.who} hue={f.hue} size={32} />
+                <Avatar name={f.who} hue={f.hue} size={32} src={f.src} />
                 <div className="min-w-0 flex-1 text-[12.5px] leading-snug">
                   <span className="font-medium">{f.who.split(' ')[0]}</span> <span className="text-ink-3">unlocked</span> <span style={{ color: TIER_META[f.tier as keyof typeof TIER_META]?.color }}>{f.name}</span>
                   <div className="text-[10.5px] text-ink-4">{f.at ? dateShort(f.at) : ''}</div>
