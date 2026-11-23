@@ -226,9 +226,9 @@
   .cp-main, .cp-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
   .cp-kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
   .cp-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-  .cp-tools .seg { display: inline-flex; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 2px; }
-  .cp-tools .seg button { background: none; border: 0; border-radius: 6px; padding: 5px 9px; font-size: 12px; color: var(--muted); }
-  .cp-tools .seg button.on { background: var(--panel3); color: var(--text); }
+  .seg { display: inline-flex; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 2px; }
+  .seg button { background: none; border: 0; border-radius: 6px; padding: 5px 9px; font-size: 12px; color: var(--muted); }
+  .seg button.on { background: var(--blue); color: #fff; }
   #cpchart { height: 420px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; position: relative; }
   #cpchart .msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--muted); }
   .cp-box { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
@@ -266,6 +266,31 @@
     .cp-kpis { grid-template-columns: repeat(3, 1fr); }
     #cpchart { height: 340px; }
   }
+
+
+  /* wallet chips in the header and the portfolio page */
+  .wchip { display: inline-flex; align-items: center; gap: 6px; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px;
+           padding: 6px 10px; font-size: 13px; font-weight: 700; white-space: nowrap; }
+  .wchip small { color: var(--muted); font-weight: 500; font-size: 11px; }
+  .wchip:hover { border-color: var(--blue); }
+  #walletpage { position: fixed; inset: 0; z-index: 6; background: var(--bg); overflow-y: auto; display: none; }
+  #walletpage.show { display: block; }
+  .wp-body { padding: 14px 16px 60px; max-width: 1300px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+  .wp-kpis { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+  .wp-kpis .kpi small { display: block; color: var(--muted); font-size: 11px; font-weight: 500; }
+  #wchart { height: 300px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; position: relative; }
+  #wchart .msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--muted); text-align: center; padding: 20px; }
+  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); align-items: center; flex-wrap: wrap; }
+  .legend i { display: inline-block; width: 12px; height: 3px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+  .tlist tr.dim td { opacity: .45; }
+  .tlist .tok { display: flex; align-items: center; gap: 8px; min-width: 120px; }
+  .tlist .tok img, .tlist .tok .ph { width: 22px; height: 22px; border-radius: 6px; object-fit: cover; background: var(--panel3); flex: none; }
+  .tlist .tok b { font-weight: 600; } .tlist .tok small { color: var(--muted); }
+  .tlist button.mini { background: none; border: 0; color: var(--muted); padding: 2px 4px; }
+  .tlist button.mini:hover { color: var(--text); }
+  .wnote { color: var(--faint); font-size: 12px; }
+  @media (max-width: 900px) { .wp-kpis { grid-template-columns: repeat(2, 1fr); } #wchart { height: 240px; } }
+  @media (max-width: 480px) { .wchip small { display: none; } }
 
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation: none !important; transition: none !important; }
@@ -394,6 +419,7 @@
     <div class="logo">🇸🇪 Sweden</div>
     <div class="status"><span id="dot" class="dot"></span><span id="status">connecting…</span></div>
     <div class="spacer"></div>
+    <div id="wchips" style="display:flex;gap:6px"></div>
     <button class="iconbtn" id="pasteca" title="Jump to the coin whose CA is in your clipboard (or press Ctrl+V anywhere)"></button>
     <button class="iconbtn" id="testpush" title="Send a test push to your phone (ntfy)"></button>
     <button class="iconbtn" id="sound" title="Sound and notifications"></button>
@@ -405,6 +431,7 @@
 <div id="toast"></div>
 <div id="flash"></div>
 <div id="coinpage" aria-label="Coin details"></div>
+<div id="walletpage" aria-label="Portfolio"></div>
 <div id="ax"><form id="axform" autocomplete="off">
   <b id="axtitle"></b>
   <div class="axgrid">
@@ -752,8 +779,9 @@ function parseNum(s) {                                       // "50k", "1.2m", "
 }
 function openCoin(mint) { location.hash = "#coin/" + mint; }
 function route() {
-  const m = location.hash.match(/^#coin\/([1-9A-HJ-NP-Za-km-z]{32,44})$/);
-  if (m && token && userToken) showCoin(m[1]); else hideCoin();
+  const m = location.hash.match(/^#coin\/([1-9A-HJ-NP-Za-km-z]{32,44})$/), ok = token && userToken;
+  if (m && ok) { hideWallet(); showCoin(m[1]); }
+  else { hideCoin(); location.hash === "#wallet" && ok ? showWallet() : hideWallet(); }
 }
 window.addEventListener("hashchange", route);
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && cp.mint) history.back(); });
@@ -936,6 +964,148 @@ async function addAlert() {
 async function delAlert(id) {
   try { await fetch("/api/pxalerts/delete", { method: "POST", headers: { "Content-Type": "application/json", ...AH() }, body: JSON.stringify({ id }) }); } catch (e) {}
   cpRefresh();
+}
+
+// ---------- wallet: header chips and portfolio page (#wallet) ----------
+const wp = { open: false, tab: "open", dust: false, data: null, timer: null, chart: null, eq: null, cash: null, key: "" };
+const money = (x) => x == null ? "–" : Math.abs(x) < 1000 ? "$" + x.toFixed(2) : usd(x);   // 0 is a real balance here
+const sol = (x, d = 3) => x == null ? "–" : (x < 0 ? "−" : "") + "◎" + Math.abs(x).toFixed(Math.abs(x) >= 100 ? 1 : d);
+const solPnl = (x) => x == null ? "–" : `<span class="${x >= 0 ? "green" : "red"}">${x >= 0 ? "+" : "−"}◎${Math.abs(x).toFixed(3)}</span>`;
+function renderWalletChips() {
+  const w = state && state.wallet, box = $("#wchips");
+  if (!w) { box.innerHTML = ""; return; }
+  if (!w.address) { box.innerHTML = `<button class="wchip" data-wsettings="1" title="Add your wallet in the settings">💼 <small>Add wallet</small></button>`; return; }
+  if (w.loading) { box.innerHTML = `<button class="wchip" data-wopen="1">💼 <small>${w.has_key === false ? "no Helius key" : "loading…"}</small></button>`; return; }
+  box.innerHTML = `<button class="wchip num" data-wopen="1" title="Total without hidden tokens">💼 ${money(w.total_vis_usd)}</button>` +
+    `<button class="wchip num" data-wopen="1" title="Cash (SOL)">◎${w.cash_sol.toFixed(2)} <small>cash</small></button>`;
+}
+document.addEventListener("click", (e) => {
+  if (e.target.closest("[data-wopen]")) { location.hash = "#wallet"; }
+  else if (e.target.closest("[data-wsettings]")) { openSettings(); setTimeout(() => $("#s_wallet")?.focus(), 50); }
+});
+
+function showWallet() {
+  if (wp.open) return;
+  wp.open = true; wp.key = "";
+  const el = $("#walletpage");
+  el.innerHTML = `<div class="cp-top"><button class="iconbtn" id="wpback" aria-label="Back">←</button>
+      <div class="title"><div class="name"><span>Portfolio</span></div><div class="sub" id="wpsub"></div></div>
+      <button class="iconbtn" id="wpsettings" title="Wallet settings">${ic("gear")}</button></div>
+    <div class="wp-body"><div class="wp-kpis num" id="wpkpis"></div>
+      <div class="legend"><span><i style="background:var(--blue)"></i>Equity without hidden tokens (since the wallet was added)</span><span><i style="background:var(--yellow)"></i>Cash (SOL, rebuilt from the history)</span></div>
+      <div id="wchart"><div class="msg">Loading…</div></div>
+      <div class="cp-box"><div class="cp-tabs" style="align-items:center"><button class="tab" data-wtab="open">Open positions</button><button class="tab" data-wtab="closed">Closed</button>
+        <button class="tab" data-wtab="txs">Transactions</button><span class="spacer"></span><label class="wnote" id="wpdustlbl"><input type="checkbox" id="wpdust"> show dust</label></div>
+        <div class="tlwrap" id="wplist"></div></div>
+      <div class="wnote" id="wpnote"></div></div>`;
+  el.classList.add("show"); document.body.style.overflow = "hidden"; el.scrollTop = 0;
+  $("#wpback").onclick = () => history.back();
+  $("#wpsettings").onclick = () => { openSettings(); setTimeout(() => $("#s_wallet")?.focus(), 50); };
+  el.querySelectorAll("[data-wtab]").forEach((b) => b.onclick = () => { wp.tab = b.dataset.wtab; renderWalletList(); });
+  $("#wpdust").onchange = (e) => { wp.dust = e.target.checked; renderWalletList(); };
+  loadLW().then(buildWChart, () => {});
+  wpRefresh(); wp.timer = setInterval(wpRefresh, 10000);
+}
+function hideWallet() {
+  if (!wp.open) return;
+  wp.open = false; clearInterval(wp.timer);
+  if (wp.chart) { wp.chart.remove(); wp.chart = null; }
+  $("#walletpage").classList.remove("show"); $("#walletpage").innerHTML = ""; document.body.style.overflow = "";
+}
+function buildWChart() {
+  if (!window.LightweightCharts || !wp.open) return;
+  const box = $("#wchart"); box.innerHTML = "";
+  const css = getComputedStyle(document.documentElement), v = (n) => css.getPropertyValue(n).trim();
+  wp.chart = LightweightCharts.createChart(box, { autoSize: true, layout: { background: { type: "solid", color: v("--panel") }, textColor: v("--muted"), fontSize: 11 },
+    grid: { vertLines: { color: v("--line") }, horzLines: { color: v("--line") } }, timeScale: { timeVisible: true, borderColor: v("--line") },
+    rightPriceScale: { borderColor: v("--line") }, localization: { priceFormatter: (x) => "◎" + x.toFixed(2) } });
+  wp.cash = wp.chart.addLineSeries({ color: v("--yellow"), lineWidth: 1, priceLineVisible: false });
+  wp.eq = wp.chart.addAreaSeries({ lineColor: v("--blue"), topColor: "rgba(82,111,255,.25)", bottomColor: "rgba(82,111,255,0)", lineWidth: 2, priceLineVisible: false });
+  wp.key = "";
+  if (wp.data) drawWChart();
+}
+function series(pts) {                                       // ascending, one point per second
+  const out = [];
+  for (const [t, v] of pts) {
+    if (v == null) continue;
+    const tt = Math.floor(t) + TZO;
+    if (out.length && out[out.length - 1].time >= tt) out[out.length - 1].value = v; else out.push({ time: tt, value: v });
+  }
+  return out;
+}
+function drawWChart() {
+  const d = wp.data; if (!wp.chart || !d || !d.cash) return;
+  const key = d.cash.length + "|" + d.equity.length + "|" + (d.cash.at(-1) || []).join() + "|" + (d.equity.at(-1) || []).join();
+  if (key === wp.key) return;
+  wp.key = key;
+  const cash = series(d.cash), eq = series(d.equity);
+  if (!cash.length && !eq.length) { $("#wchart").insertAdjacentHTML("beforeend", '<div class="msg">No history yet.</div>'); return; }
+  wp.cash.setData(cash); wp.eq.setData(eq); wp.chart.timeScale().fitContent();
+}
+async function wpRefresh() {
+  if (!wp.open) return;
+  try {
+    const r = await fetch("/api/wallet", { headers: AH() });
+    if (r.status === 401) return on401(r);
+    wp.data = await r.json();
+  } catch (e) { return; }
+  const d = wp.data, s = d.summary || {};
+  if (!s.address) {
+    $("#wpkpis").innerHTML = ""; $("#wchart").innerHTML = '<div class="msg">No wallet yet. Add your wallet address in the settings (⚙ → Wallet).</div>';
+    $("#wplist").innerHTML = ""; return;
+  }
+  $("#wpsub").innerHTML = `<span>${esc(short(s.address))}</span><a href="https://solscan.io/account/${esc(s.address)}" target="_blank" rel="noopener noreferrer" style="color:var(--muted)">Solscan</a>` +
+    (s.updated ? `<span>updated ${secs(Date.now() / 1000 - s.updated)} ago</span>` : "") + (s.error ? `<span class="red">${esc(s.error.slice(0, 80))}</span>` : "");
+  if (s.loading) {
+    $("#wpkpis").innerHTML = ""; $("#wchart").innerHTML = `<div class="msg">${s.has_key === false ? "No Helius key on the Pi (file helius_key)." : "Loading your wallet and its history… the first time takes up to a minute."}</div>`;
+    return;
+  }
+  const p = d.pnl || {}, usdOf = (x) => x == null ? "" : `<small>${money(Math.abs(x * s.sol_usd))}</small>`;
+  $("#wpkpis").innerHTML = [["Total", money(s.total_vis_usd), `<small>without hidden · ${sol(s.total_vis_usd / s.sol_usd, 2)}</small>`],
+    ["Total incl. hidden", money(s.total_usd), ""], ["Cash", sol(s.cash_sol, 3), `<small>${money(s.cash_usd)}</small>`],
+    ["Unrealized", solPnl(p.unreal_sol), usdOf(p.unreal_sol)], ["Realized 24h / 7d", `${solPnl(p.r24h)} <span class="muted">/</span> ${solPnl(p.r7d)}`, ""],
+    ["Realized (history)", solPnl(p.rall), usdOf(p.rall)]]
+    .map(([k, v, sub]) => `<div class="kpi"><div class="k">${k}</div><div class="v">${v}</div>${sub}</div>`).join("");
+  if (wp.chart) drawWChart();
+  $("#wpnote").textContent = `History: the last ${d.history_n} transactions (up to ${d.max_backfill} are loaded the first time, every new one after that).` +
+    (p.incomplete ? ` ${p.incomplete} closed position(s) started before that history and have no profit figure.` : "") +
+    " Profit uses the average buy cost; tokens received by transfer count as cost-free. USD at today's SOL price.";
+  renderWalletList();
+}
+const tokCell = (r) => { const img = safeUrl(r.image);
+  return `<div class="tok">${img ? `<img src="${esc(img)}" loading="lazy" referrerpolicy="no-referrer" alt="">` : '<span class="ph"></span>'}<span><b>${esc(r.sym || short(r.mint))}</b><br><small>${esc((r.name || "").slice(0, 22))}</small></span></div>`; };
+function renderWalletList() {
+  const d = wp.data; if (!d || !d.open) return;
+  document.querySelectorAll("[data-wtab]").forEach((b) => b.classList.toggle("on", b.dataset.wtab === wp.tab));
+  $("#wpdustlbl").hidden = wp.tab !== "open";
+  const now = Date.now() / 1000;
+  if (wp.tab === "open") {
+    const rows = d.open.filter((r) => wp.dust || !r.dust || r.hidden);
+    $("#wplist").innerHTML = rows.length ? `<table class="tlist num"><tr><th>Token</th><th class="r">Amount</th><th class="r">Value</th><th class="r">Cost</th><th class="r">PnL</th><th></th></tr>` +
+      rows.map((r) => { const pc = r.unreal_sol != null && r.cost_open_sol ? r.unreal_sol / r.cost_open_sol : null;
+        return `<tr class="${r.hidden || r.dust ? "dim" : ""}"><td data-open="${esc(r.mint)}" style="cursor:pointer">${tokCell(r)}</td><td class="r">${(+r.amount).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+          <td class="r">${money(r.value_usd)}</td><td class="r">${sol(r.cost_open_sol)}</td><td class="r">${solPnl(r.unreal_sol)}${pc != null ? ` <small class="${pc >= 0 ? "green" : "red"}">${pc >= 0 ? "+" : ""}${(pc * 100).toFixed(0)}%</small>` : ""}</td>
+          <td class="r"><button class="mini" data-copy="${esc(r.mint)}" title="Copy CA">${ic("copy")}</button><button class="mini" data-whide="${esc(r.mint)}" data-on="${r.hidden ? 0 : 1}" title="${r.hidden ? "Show again" : "Hide (not counted in the total)"}">${ic(r.hidden ? "show" : "hide")}</button></td></tr>`; }).join("") + "</table>"
+      : '<div class="empty">No open positions' + (d.open.length ? " (only dust - tick “show dust”)" : "") + ".</div>";
+  } else if (wp.tab === "closed") {
+    $("#wplist").innerHTML = d.closed.length ? `<table class="tlist num"><tr><th>Token</th><th class="r">Bought</th><th class="r">Sold</th><th class="r">PnL</th><th class="r">Trades</th><th class="r">Last</th></tr>` +
+      d.closed.map((r) => `<tr><td data-open="${esc(r.mint)}" style="cursor:pointer">${tokCell(r)}</td><td class="r">${sol(r.cost_sol)}</td><td class="r">${sol(r.proceeds_sol)}</td>
+        <td class="r">${r.pnl_sol == null ? '<small class="muted">buy not in history</small>' : solPnl(r.pnl_sol) + (r.pnl_pct != null ? ` <small class="${r.pnl_pct >= 0 ? "green" : "red"}">${r.pnl_pct >= 0 ? "+" : ""}${(r.pnl_pct * 100).toFixed(0)}%</small>` : "")}</td>
+        <td class="r">${r.buys}/${r.sells}</td><td class="r">${r.last ? secs(now - r.last) : "–"}</td></tr>`).join("") + "</table>"
+      : '<div class="empty">No closed positions in the loaded history.</div>';
+  } else {
+    const K = { buy: "Buy", sell: "Sell", "transfer in": "Received", "transfer out": "Sent", "sol in": "SOL in", "sol out": "SOL out", failed: "Failed", other: "Other" };
+    $("#wplist").innerHTML = d.txs.length ? `<table class="tlist num"><tr><th>Age</th><th>Type</th><th>Token</th><th class="r">Amount</th><th class="r">SOL</th><th></th></tr>` +
+      d.txs.map((t) => `<tr class="${t.kind === "buy" ? "buy" : t.kind === "sell" ? "sell" : ""}"><td>${secs(now - t.ts)}</td><td class="side">${K[t.kind] || t.kind}</td>
+        <td>${t.mint ? `<span data-open="${esc(t.mint)}" style="cursor:pointer">${esc(t.sym || short(t.mint))}</span>` : t.ntok > 1 ? t.ntok + " tokens" : "–"}</td>
+        <td class="r">${t.amount != null ? (+t.amount).toLocaleString(undefined, { maximumFractionDigits: 2 }) : ""}</td><td class="r">${solPnl(t.sol)}</td>
+        <td><a href="https://solscan.io/tx/${esc(t.sig)}" target="_blank" rel="noopener noreferrer" style="color:var(--muted)">↗</a></td></tr>`).join("") + "</table>"
+      : '<div class="empty">No transactions loaded yet.</div>';
+  }
+  $("#wplist").querySelectorAll("[data-whide]").forEach((b) => b.onclick = async () => {
+    await fetch("/api/wallet/hide", { method: "POST", headers: { "Content-Type": "application/json", ...AH() }, body: JSON.stringify({ mint: b.dataset.whide, hide: b.dataset.on === "1" }) });
+    toast(b.dataset.on === "1" ? "Hidden - not counted in the total" : "Shown again"); wpRefresh(); tick();
+  });
 }
 
 // ---------- page ----------
@@ -1160,6 +1330,8 @@ function settingsHtml(st) {
   };
   return `<div class="sec"><h3>Account</h3><div class="row"><label>${esc(state.email)}</label><button class="iconbtn" id="slogout">Log out</button></div></div>` +
     FIELDS.map(([t, rows]) => `<div class="sec"><h3>${t}</h3>${rows.map(row).join("")}</div>`).join("") +
+    `<div class="sec"><h3>Wallet</h3><div class="row"><label for="s_wallet">Wallet address<small>Public Solana address - balance, positions and profit in the header and on the portfolio page. Never enter a private key.</small></label></div>
+      <div class="row"><input type="text" id="s_wallet" style="width:100%" value="${esc((state.wallet || {}).address || "")}" autocomplete="off" spellcheck="false" placeholder="e.g. 7xKX…"></div></div>` +
     `<div class="sec"><h3>Style</h3><div class="presets">${Object.entries(PRESETS).map(([n, c]) =>
       `<button type="button" data-preset="${n}"><i style="background:${c[0]}"></i><i style="background:${c[3]}"></i>${n}</button>`).join("")}</div>` +
     [["bg", "Background"], ["panel", "Cards"], ["text", "Text"], ["accent", "Accent"]].map(([k, l]) =>
@@ -1204,6 +1376,12 @@ $("#opensettings").onclick = openSettings;
 $("#settings").addEventListener("click", (e) => { if (e.target.closest("[data-close]")) closeSettings(); });
 $("#ssave").onclick = async () => {
   const st = readSettings();
+  const addr = ($("#s_wallet")?.value || "").trim();
+  if (addr !== ((state.wallet || {}).address || "")) {
+    const rw = await fetch("/api/wallet/set", { method: "POST", headers: { "Content-Type": "application/json", ...AH() }, body: JSON.stringify({ address: addr }) });
+    const jw = await rw.json();
+    if (!jw.ok) return toast(jw.error || "Wallet not saved", false);
+  }
   try {
     const r = await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json", ...AH() }, body: JSON.stringify({ settings: st }) });
     if (r.status === 401) return on401(r);
@@ -1230,7 +1408,7 @@ async function tick() {
     $("#dot").className = "dot" + (state.live ? " live" : "");
     const n = state.coins.filter((c) => c.visible && !c.user_hidden).length;
     $("#status").innerHTML = (state.live ? "live" : "loading history…") + ` · ${n} shown<span class="long"> · ${new Date().toLocaleTimeString()}</span>`;
-    handleAlerts(); render();
+    handleAlerts(); render(); renderWalletChips();
   } catch (e) { $("#dot").className = "dot"; $("#status").textContent = "no connection to the terminal"; }
 }
 

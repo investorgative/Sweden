@@ -37,6 +37,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 sys.path.insert(0, os.path.dirname(__file__))
 import accounts as A
 import replay as R
+import wallet as WL
 from grad_replay import SKIP, WSOL, sol_usd
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -44,6 +45,7 @@ HISTORY_S = 72 * 3600                    # creator history (24 h) and copied nam
 AXIOM_FILE = os.path.join(R.DATA, "axiom_checks.jsonl")
 PREFS_FILE = os.path.join(R.DATA, "terminal_prefs.json")
 PASSKEY_FILE = os.path.join(HERE, "..", "terminal_passkey")
+HELIUS_KEY_FILE = os.environ.get("SWEDEN_HELIUS_KEY_FILE") or os.path.join(HERE, "..", "helius_key")
 MAIL_FILE = os.environ.get("SWEDEN_MAIL_FILE") or os.path.join(HERE, "..", "gmail.json")   # tests: SWEDEN_MAIL_FILE=none
 TUNNEL_LOG = os.environ.get("SWEDEN_TUNNEL_LOG") or os.path.join(HERE, "..", "logs", "tunnel.log")   # tests: =none
 LAST_LINK = os.path.join(R.DATA, "last_link.txt")
@@ -600,6 +602,15 @@ class Terminal:
                     self.tails = {f: t for f, t in self.tails.items() if os.path.exists(f)}
 
     # ---------- API ----------
+    def token_price(self, mint):
+        """(USD per token, name, symbol, image) for the wallet page, from the coin's latest trade; None if unknown."""
+        with self.lock:
+            c = self.coins.get(mint)
+            if c is None or not c.trades or not self.usd:
+                return None
+            mc = max(c.trades, key=lambda x: (x[0], x[1]))[3]          # mcap in SOL after the newest trade
+            return (mc * self.usd / 1e9, c.name, c.sym, (c.meta or {}).get("image"))
+
     def lookup(self, mint, uid):
         """Where a pasted CA stands: which tab shows it and why, or why it is not shown at all."""
         now = time.time()
@@ -796,7 +807,9 @@ class Terminal:
                                 traders=f.get("traders")),
                     live=c.H.metrics(), meta=c.meta or {}))
             alerts = list(self.alerts[uid])
+        self.wallets.touch(uid)
         return dict(now=now, live=self.live, sol_usd=self.usd, coins=out, alerts=alerts, all=show_all, counts=counts,
+                    wallet=self.wallets.summary(uid),
                     radar=sorted(radar, key=lambda r: r["grad_min"]), email=u["email"], settings=s,
                     defaults=self.acc.defaults)
 
@@ -874,6 +887,9 @@ def serve(t, port):
                           else {"error": "bad timeframe"})
             elif u.path == "/api/pxalerts":
                 self.send(200, {"alerts": acc.px_list(uid)})
+            elif u.path == "/api/wallet":
+                t.wallets.touch(uid)
+                self.send(200, t.wallets.full(uid))
             else:
                 self.send(404, {"error": "not found"})
 
@@ -926,6 +942,15 @@ def serve(t, port):
                     return self.send(200, {"ok": True, "alerts": acc.px_list(uid)})
                 except (KeyError, TypeError, ValueError):
                     return self.send(400, {"ok": False})
+            if p == "/api/wallet/set":
+                ok = t.wallets.set_address(uid, str(b.get("address", "")))
+                return self.send(200 if ok else 400, {"ok": ok, "error": None if ok else "that is not a Solana address"})
+            if p == "/api/wallet/hide":
+                try:
+                    t.wallets.hide(uid, str(b["mint"])[:64], bool(b.get("hide")))
+                    return self.send(200, {"ok": True})
+                except (KeyError, TypeError):
+                    return self.send(400, {"ok": False})
             if p == "/api/testpush":
                 ok, msg = t.test_push(uid)
                 return self.send(200, {"ok": ok, "msg": msg})
@@ -971,10 +996,13 @@ def main():
     acc = A.Accounts(os.path.join(R.DATA, "users.db"), os.path.join(R.DATA, "secret.key"), MAIL_FILE, defaults,
                      prefs_file=PREFS_FILE, owner_topic=os.environ.get("SWEDEN_NTFY_TOPIC", ""))
     t = Terminal(a, acc)
-    for target in (t.loop, t.meta_worker, t.price_worker, t.link_worker):
+    t.wallets = WL.Wallets(os.path.join(R.DATA, "wallets.db"), HELIUS_KEY_FILE, t.token_price)
+    t.wallets.sol_usd = lambda: t.usd
+    for target in (t.loop, t.meta_worker, t.price_worker, t.link_worker, t.wallets.worker):
         threading.Thread(target=target, daemon=True).start()
     log(f"SWEDEN terminal on http://0.0.0.0:{a.port}  ({len(acc.users())} account(s), "
-        f"mail: {'Gmail' if acc.mailer.cfg else 'not set up - codes go to this log'})")
+        f"mail: {'Gmail' if acc.mailer.cfg else 'not set up - codes go to this log'}, "
+        f"wallets: {'Helius' if t.wallets.h else 'no helius_key'})")
     serve(t, a.port)
 
 
