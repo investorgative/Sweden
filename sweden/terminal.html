@@ -796,7 +796,8 @@ function showCoin(mint) {
       <button class="iconbtn" id="cpback" aria-label="Back">←</button><div class="img" id="cpimg"></div>
       <div class="title"><div class="name"><span id="cpname">…</span><button class="mini" data-copy="${esc(mint)}" title="Copy CA">${ic("copy")}</button></div>
         <div class="sub" id="cpsub"></div></div>
-      <div class="acts" id="cpacts"></div><a class="axiom" id="cpax" target="_blank" rel="noopener noreferrer">Axiom ${ic("ext")}</a></div>
+      <div class="acts" id="cpacts"></div><button class="iconbtn" data-pastebtn="1" title="Open the coin whose CA is in your clipboard (or Ctrl+V)">${ic("paste")}</button>
+      <a class="axiom" id="cpax" target="_blank" rel="noopener noreferrer">Axiom ${ic("ext")}</a></div>
     <div class="cp-body"><div class="cp-main">
       <div class="cp-kpis num" id="cpkpis"></div>
       <div class="cp-tools"><div class="seg" id="cptf">${TFS.map(([t, l]) => `<button data-tf="${t}" class="${t === cp.tf ? "on" : ""}">${l}</button>`).join("")}</div>
@@ -896,7 +897,20 @@ async function cpRefresh() {
     if (rd.status === 401) return on401(rd);
     const d = await rd.json(), c = await rc.json();
     if (mint !== cp.mint) return;
-    if (!d.info || !d.info.found) { $("#cpname").textContent = short(mint); $("#cpkpis").innerHTML = '<div class="empty">This coin is not in the terminal\'s data (older than ~6 h or launched elsewhere). Use Axiom for it.</div>'; $("#cpax").href = "https://axiom.trade/meme/" + mint + "?chain=sol"; return; }
+    if (!d.info || !d.info.found) {
+      $("#cpname").textContent = "Unknown coin"; $("#cpsub").innerHTML = `<span>${esc(short(mint))}</span>`;
+      $("#cpax").href = "https://axiom.trade/meme/" + mint + "?chain=sol";
+      $("#cpkpis").innerHTML = ""; document.querySelector(".cp-tools").hidden = true; document.querySelector(".cp-side").hidden = true;
+      document.querySelector("#cplist").closest(".cp-box").hidden = true;
+      $("#cpchart").style.height = "auto";
+      $("#cpchart").innerHTML = `<div style="padding:28px 20px;text-align:center;display:flex;flex-direction:column;gap:14px;align-items:center">
+        <div style="color:var(--muted)">This coin is not in the terminal's data - it is older than ~6.5 h (and not on your watchlist) or was not launched on pump.fun.</div>
+        <button class="copy" style="max-width:320px" data-copy="${esc(mint)}" data-big="1"><span>Copy CA</span><code>${esc(short(mint))}</code></button>
+        <div class="links" style="justify-content:center">${[["Axiom", "https://axiom.trade/meme/" + mint + "?chain=sol"], ["DexScreener", "https://dexscreener.com/solana/" + mint],
+          ["pump.fun", "https://pump.fun/coin/" + mint], ["Solscan", "https://solscan.io/token/" + mint]].map(([t, u]) =>
+          `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer"${t === "Axiom" ? ' class="axiom"' : ""}>${t}</a>`).join("")}</div></div>`;
+      clearInterval(cp.timer); cp.timer = null; return;
+    }
     cp.data = d; renderCoin(); if (c.found && c.tf === cp.tf) drawCandles(c); if (cp.lastT !== null) drawAlertLines(d.alerts || []);
   } catch (e) { /* next refresh */ } finally { cp.busy = false; if (cp.again) { cp.again = false; cpRefresh(); } }
 }
@@ -990,6 +1004,7 @@ function showWallet() {
   const el = $("#walletpage");
   el.innerHTML = `<div class="cp-top"><button class="iconbtn" id="wpback" aria-label="Back">←</button>
       <div class="title"><div class="name"><span>Portfolio</span></div><div class="sub" id="wpsub"></div></div>
+      <button class="iconbtn" data-pastebtn="1" title="Open the coin whose CA is in your clipboard (or Ctrl+V)">${ic("paste")}</button>
       <button class="iconbtn" id="wpsettings" title="Wallet settings">${ic("gear")}</button></div>
     <div class="wp-body"><div class="wp-kpis num" id="wpkpis"></div>
       <div class="legend"><span><i style="background:var(--blue)"></i>Equity without hidden tokens (since the wallet was added)</span><span><i style="background:var(--yellow)"></i>Cash (SOL, rebuilt from the history)</span></div>
@@ -1116,25 +1131,18 @@ function renderWalletList() {
 // ---------- page ----------
 // ---------- jump to a pasted CA ----------
 const CA_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
-async function jumpTo(ca) {
-  let d;
-  try {
-    const r = await fetch("/api/coin?mint=" + encodeURIComponent(ca), { headers: AH() });
-    if (r.status === 401) return on401(r);
-    d = await r.json();
-  } catch (e) { return toast("No connection", false); }
-  const ax = "https://axiom.trade/meme/" + (d.pool || ca) + "?chain=sol";
-  $("#jump").innerHTML = `<div class="jt"><b>${d.found ? esc(d.name) + " · $" + esc(d.sym) : esc(short(ca))}</b><div>${esc(d.text)}</div></div>` +
-    (d.found ? `<a href="${esc(ax)}" target="_blank" rel="noopener noreferrer">Axiom</a>` : "") + `<button id="jumpclose" aria-label="Close">✕</button>`;
-  $("#jump").classList.add("show");
-  $("#jumpclose").onclick = () => { $("#jump").classList.remove("show"); focusMint = null; render(); };
-  if (d.tab) {
-    focusMint = ca; focusScroll = true;
-    if (tab !== d.tab) { tab = d.tab; try { localStorage.setItem("swedenTab", tab); } catch (e) {} }
-    query = ""; $("#q").value = ""; $("#search").classList.remove("has");
-    render(); tick();
-  } else { focusMint = null; render(); window.scrollTo({ top: 0 }); }
+function jumpTo(ca) {                                        // a pasted CA opens that coin's page, from anywhere
+  if ($("#settings").classList.contains("show")) closeSettings();
+  if (cp.mint === ca) return toast("This coin is already open");
+  openCoin(ca);
 }
+async function pasteFromClipboard() {                        // phones: no paste without a text field, so a button
+  try {
+    const ca = (await navigator.clipboard.readText()).trim();
+    CA_RE.test(ca) ? jumpTo(ca) : toast("No CA in the clipboard", false);
+  } catch (e) { toast("Clipboard not allowed - press Ctrl+V on the page, or paste into a search box", false); }
+}
+document.addEventListener("click", (e) => { if (e.target.closest("[data-pastebtn]")) pasteFromClipboard(); });
 document.addEventListener("paste", (e) => {
   const t = e.target;
   if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;   // normal paste
@@ -1498,12 +1506,7 @@ $("#testpush").onclick = async () => {
 };
 $("#search .si").innerHTML = ic("search");
 $("#pasteca").innerHTML = ic("paste") + "<span>Paste CA</span>";
-$("#pasteca").onclick = async () => {
-  try {
-    const ca = (await navigator.clipboard.readText()).trim();
-    CA_RE.test(ca) ? jumpTo(ca) : toast("No CA in the clipboard", false);
-  } catch (e) { toast("Clipboard not allowed - press Ctrl+V on the page, or paste into a search box", false); }
-};
+$("#pasteca").onclick = pasteFromClipboard;
 $("#q").addEventListener("input", (e) => { query = e.target.value.trim().toLowerCase(); $("#search").classList.toggle("has", !!query); render(); });
 $("#qclear").onclick = () => { $("#q").value = ""; query = ""; $("#search").classList.remove("has"); render(); $("#q").focus(); };
 $("#axcancel").onclick = () => $("#ax").classList.remove("show");
