@@ -73,6 +73,8 @@ def clean_settings(new, base):
                 out[k] = v
             elif k == "card_view" and v in CARD_VIEWS:
                 out[k] = v
+            elif k == "display_name" and isinstance(v, str):
+                out[k] = re.sub(r"[^\w .-]", "", v.strip())[:24]
             elif k == "ntfy_topic" and isinstance(v, str) and (v == "" or TOPIC_RE.match(v.strip())):
                 out[k] = v.strip()
         except (TypeError, ValueError):
@@ -123,6 +125,7 @@ class Accounts:
             CREATE TABLE IF NOT EXISTS tracked (uid INT, wallet TEXT, label TEXT, PRIMARY KEY (uid, wallet));
             CREATE TABLE IF NOT EXISTS snooze (uid INT, mint TEXT, until REAL, PRIMARY KEY (uid, mint));
             CREATE TABLE IF NOT EXISTS notes (uid INT, mint TEXT, text TEXT, tag TEXT, ts REAL, PRIMARY KEY (uid, mint));
+            CREATE TABLE IF NOT EXISTS shared (uid INT, mint TEXT, PRIMARY KEY (uid, mint));
             CREATE TABLE IF NOT EXISTS pxalerts (id INTEGER PRIMARY KEY, uid INT, mint TEXT, sym TEXT, kind TEXT, op TEXT,
                 value REAL, created REAL);
         """)
@@ -155,9 +158,16 @@ class Accounts:
         self.px = px                             # mint -> active price / mcap alerts (one-shot: deleted when fired)
         with self.lock:
             nrows = self.db.execute("SELECT uid, mint, text, tag, ts FROM notes").fetchall()
+        with self.lock:
+            shared = set(self.db.execute("SELECT uid, mint FROM shared").fetchall())
+        pub = {}
         for uid, mint, text, tag, ts in nrows:
             if uid in cache:
-                cache[uid].setdefault("notes", {})[mint] = {"text": text, "tag": tag, "ts": ts}
+                cache[uid].setdefault("notes", {})[mint] = {"text": text, "tag": tag, "ts": ts, "shared": (uid, mint) in shared}
+                if (uid, mint) in shared:                # visible to the other users on the coin page
+                    name = cache[uid]["settings"].get("display_name") or cache[uid]["email"].split("@")[0]
+                    pub.setdefault(mint, []).append({"uid": uid, "name": name, "text": text, "tag": tag, "ts": ts})
+        self.shared_notes = pub
         with self.lock:
             zrows = self.db.execute("SELECT uid, mint, until FROM snooze WHERE until > ?", (time.time(),)).fetchall()
         for uid, mint, until in zrows:
@@ -379,13 +389,17 @@ class Accounts:
         self.reload()
 
     # ---------- notes / tags per coin ----------
-    def set_note(self, uid, mint, text, tag):
+    def set_note(self, uid, mint, text, tag, share=False):
         text, tag = (text or "").strip()[:500], tag if tag in NOTE_TAGS else ""
         with self.lock:
             if text or tag:
                 self.db.execute("REPLACE INTO notes VALUES (?, ?, ?, ?, ?)", (uid, mint, text, tag, time.time()))
             else:
                 self.db.execute("DELETE FROM notes WHERE uid = ? AND mint = ?", (uid, mint))
+            if share and (text or tag):
+                self.db.execute("INSERT OR IGNORE INTO shared VALUES (?, ?)", (uid, mint))
+            else:
+                self.db.execute("DELETE FROM shared WHERE uid = ? AND mint = ?", (uid, mint))
             self.db.commit()
         self.reload()
 

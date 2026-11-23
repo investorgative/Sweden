@@ -180,16 +180,17 @@ class Wallets:
         self.seen[uid] = time.time()
 
     # ---------- prices / names ----------
-    def token_info(self, mints):
-        """{mint: (usd, name, sym, image)}: the terminal's own data first, else DexScreener (cached 60 s)."""
+    def token_info(self, mints, fetch=False):
+        """{mint: (usd, name, sym, image)}: the terminal's own data first, else DexScreener. Page requests read the
+        cache only (fetch=False); the background worker refreshes it (a whale wallet needs ~20 DexScreener calls)."""
         out, ask = {}, []
         for m in mints:
             p = self.price_fn(m)
             if p:
                 out[m] = p
-            elif m in self.meta and time.time() - self.meta[m][0] < 60:
+            elif m in self.meta and (not fetch or time.time() - self.meta[m][0] < 60):
                 out[m] = self.meta[m][1:]
-            else:
+            elif fetch:
                 ask.append(m)
         for i in range(0, len(ask), 30):
             chunk = ask[i:i + 30]
@@ -252,6 +253,11 @@ class Wallets:
             self.db.execute("UPDATE wallets SET backfilled = 1, last_sig = ? WHERE uid = ?", (newest, uid))
             self.db.commit()
         log(f"wallet {uid}: history loaded ({n} transactions)")
+        with self.lock:
+            mints = set()
+            for (tokens,) in self.db.execute("SELECT tokens FROM wtx WHERE uid = ?", (uid,)):
+                mints |= set(json.loads(tokens))
+        self.token_info(list(mints - {USDC}), fetch=True)                # names of traded coins for the portfolio page
 
     def store(self, uid, addr, txs):
         with self.lock:
@@ -302,6 +308,7 @@ class Wallets:
             with self.lock:
                 self.db.execute("UPDATE wallets SET last_sig = ? WHERE uid = ?", (sigs[0], uid))
                 self.db.commit()
+        self.token_info([m for m in tokens if m != USDC], fetch=True)          # warm the price cache for the pages
         self.live[uid] = {"bal": time.time(), "sol": sol, "tokens": tokens, "error": None}
         self.snapshot(uid)
 

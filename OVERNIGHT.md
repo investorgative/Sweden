@@ -17,6 +17,10 @@ To deploy (after your OK): merge the branch into `~/sweden`, restart only the te
 3. **Wallet credits:** new wallet transactions were parsed with Helius' "Enhanced Transactions" API = 100 credits per
    call (and in maintenance mode). Now `getTransaction` (1 credit) with the same result (checked on 20 of 20 tx).
 4. `check_feed.py` was broken since the PumpSwap merge (import error). Fixed.
+5. Wallet prices were fetched from DexScreener inside page requests (a whale wallet: ~20 calls, page updates hanging
+   for seconds). Now the background worker keeps the price cache warm; page updates read it (state ~9 ms, portfolio
+   ~70 ms with a 655-position wallet).
+6. The portfolio page threw an error when closed while an update was still loading. Fixed.
 
 ## New features
 
@@ -48,6 +52,13 @@ recommendations / entries they would have given and how those moved. Example ton
   per coin automatically, 400 with the button, 10,000 per day) and recomputes holders / bundle / snipers / top 10.
   Example: COPIUM after 247 recovered trades: top 10 31.5 % -> 26.3 %, bundle 46.5 % -> 37.3 % - exactly the kind of
   difference you saw against Axiom.
+
+### For your group of friends
+- **Shared notes**: tick "share with friends" under your coin note - the others see it on that coin page with your name
+  (Settings > Account > Name for friends). Private notes stay private.
+- **Share link** 🔗 on the coin page: copies a direct link to that coin page (friends still need the passkey).
+- **Holders line** on the candle chart (number of wallets holding over time, from the recorded trades).
+- **Market heat** in the radar: launches and graduations per hour on pump.fun right now.
 
 ### Alerts
 - **Danger** (push "urgent" + red flash): the dev or a holder with >= 3 % sells at least half while your wallet holds

@@ -819,6 +819,13 @@ function updateRadar() {
   const rs = (state.radar || []).filter((r) => r.status !== "hidden");
   const n = (st) => rs.filter((r) => r.status === st).length;
   $("#rtitle").textContent = { radar: hero ? "Scanning graduates" : "Radar", pulse: "Live graduations", grid: "Heat grid" }[mode];
+  const ht = state.heat, rt = document.querySelector("#radar .rinfo .rtitle");   // how busy pump.fun is right now
+  if (ht && rt) {
+    let el = $("#rheat");
+    if (!el) { rt.insertAdjacentHTML("afterend", '<div class="wnote" id="rheat"></div>'); el = $("#rheat"); }
+    el.textContent = `🔥 ${Math.round(ht.launches_h)} launches / h · ${ht.grads_h.toFixed(1)} graduations / h`;
+    el.title = `pump.fun over the collector's last ${ht.hours.toFixed(1)} h`;
+  }
   $("#rstats").innerHTML = [["waiting", "Waiting for dip", n("waiting")], ["filtered", "Filtered out", n("filtered")],
     ["mayhem", "Mayhem", n("mayhem")], ["dead", "Dead", n("dead")]]
     .map(([st, k, v]) => `<div class="rs"><div class="v">${v}</div><div class="k"><span class="lg c-${st}"></span>${k}</div></div>`).join("");
@@ -936,12 +943,13 @@ function showCoin(mint) {
       <button class="iconbtn" id="cpback" aria-label="Back">←</button><div class="img" id="cpimg"></div>
       <div class="title"><div class="name"><span id="cpname">…</span><button class="mini" data-copy="${esc(mint)}" title="Copy CA">${ic("copy")}</button></div>
         <div class="sub" id="cpsub"></div></div>
-      <div class="acts" id="cpacts"></div><button class="iconbtn" data-pastebtn="1" title="Open the coin whose CA is in your clipboard (or Ctrl+V)">${ic("paste")}</button>
+      <div class="acts" id="cpacts"></div><button class="iconbtn" id="cpshare" title="Copy a link to this coin page (friends need the passkey)">🔗</button><button class="iconbtn" data-pastebtn="1" title="Open the coin whose CA is in your clipboard (or Ctrl+V)">${ic("paste")}</button>
       <a class="axiom" id="cpax" target="_blank" rel="noopener noreferrer">Axiom ${ic("ext")}</a></div>
     <div class="cp-body"><div class="cp-main">
       <div class="cp-kpis num" id="cpkpis"></div>
       <div class="cp-tools"><div class="seg" id="cptf">${TFS.map(([t, l]) => `<button data-tf="${t}" class="${t === cp.tf ? "on" : ""}">${l}</button>`).join("")}</div>
-        <div class="seg" id="cpmode"><button data-cmode="mcap" class="${cp.mode === "mcap" ? "on" : ""}">MCap</button><button data-cmode="price" class="${cp.mode === "price" ? "on" : ""}">Price</button></div></div>
+        <div class="seg" id="cpmode"><button data-cmode="mcap" class="${cp.mode === "mcap" ? "on" : ""}">MCap</button><button data-cmode="price" class="${cp.mode === "price" ? "on" : ""}">Price</button></div>
+        <label class="wnote"><input type="checkbox" id="cpholders"${cp.showHolders ? " checked" : ""}> holders line</label></div>
       <div id="cpchart"><div class="msg">Loading chart…</div></div>
       <div class="cp-box"><div class="cp-tabs"><button class="tab" data-cptab="trades">Trades</button><button class="tab" data-cptab="traders">Top traders</button>
         <button class="tab" data-cptab="holders">Top holders</button><button class="tab" data-cptab="dev">Dev history <span class="n" id="cpdevn"></span></button></div>
@@ -958,7 +966,8 @@ function showCoin(mint) {
         <div class="kv num" id="cpcalcout"></div></div>
       <div class="cp-box"><h4>Your note</h4><div class="ntags" id="cpntags"></div>
         <textarea id="cpnote" maxlength="500" placeholder="Only you see this - meme, narrative, why you skipped it…"></textarea>
-        <div style="display:flex;justify-content:flex-end;margin-top:6px"><button class="iconbtn" id="cpnotesave">Save note</button></div></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px"><label class="wnote"><input type="checkbox" id="cpnoteshare"> share with friends</label>
+          <button class="iconbtn" id="cpnotesave">Save note</button></div><div id="cpfriends"></div></div>
       <div class="cp-box" id="cpminebox" hidden><h4>Your position</h4><div class="kv num" id="cpmine"></div></div>
       <div class="cp-box"><h4>Buy / sell pressure</h4><div id="cppress"></div></div>
       <div class="cp-box"><h4>Token info</h4><div class="metrics" id="cpmetrics"></div><div class="kv num" id="cpkv" style="margin-top:12px"></div></div>
@@ -966,6 +975,10 @@ function showCoin(mint) {
     </aside></div>`;
   el.classList.add("show"); document.body.style.overflow = "hidden"; el.scrollTop = 0;
   $("#cpback").onclick = () => history.back();
+  $("#cpshare").onclick = () => {
+    const url = location.origin + location.pathname + "#coin/" + mint;
+    (navigator.clipboard && window.isSecureContext ? navigator.clipboard.writeText(url) : Promise.reject()).then(() => toast("Link copied - friends need the passkey"), () => prompt("Link to this coin:", url));
+  };
   el.querySelectorAll("[data-tf]").forEach((b) => b.onclick = () => { cp.tf = +b.dataset.tf; cp.candles = null; cp.lastT = null; markSeg("#cptf", b); rebuildChart(); cpRefresh(); });
   el.querySelectorAll("[data-cmode]").forEach((b) => b.onclick = () => { cp.mode = b.dataset.cmode; cp.full = true; cp.lineKey = ""; markSeg("#cpmode", b); cpRefresh(); });
   el.querySelectorAll("[data-akind]").forEach((b) => b.onclick = () => { cp.akind = b.dataset.akind; markSeg("#cpakind", b); $("#cpaval").value = ""; $("#cpaval").placeholder = cp.akind === "mcap" ? "e.g. 50k" : "e.g. 0.00005"; });
@@ -981,6 +994,7 @@ function showCoin(mint) {
   $("#cpcalc").addEventListener("input", renderCalc);
   el.querySelectorAll("[data-calc]").forEach((b) => b.onclick = () => { $("#cpcalc").value = b.dataset.calc; renderCalc(); });
   $("#cpaval").addEventListener("keydown", (e) => { if (e.key === "Enter") addAlert(); });
+  $("#cpholders").onchange = (e) => { cp.showHolders = e.target.checked; cp.full = true; rebuildChart(); cpRefresh(); };
   loadLW().then(rebuildChart, () => { $("#cpchart").innerHTML = '<div class="msg">The chart library could not be loaded (no internet?)</div>'; });
   cpRefresh(); cp.timer = setInterval(cpRefresh, 3000);
 }
@@ -1007,6 +1021,8 @@ function rebuildChart() {
     wickDownColor: v("--red"), priceFormat: { type: "custom", formatter: fmtVal, minMove: 1e-12 } });
   cp.vs = chart.addHistogramSeries({ priceFormat: { type: "volume" }, priceScaleId: "" });
   cp.vs.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
+  cp.hs = cp.showHolders ? chart.addLineSeries({ color: v("--yellow"), lineWidth: 1, priceScaleId: "left", priceLineVisible: false, lastValueVisible: true }) : null;
+  if (cp.hs) chart.applyOptions({ leftPriceScale: { visible: true, borderColor: v("--line") } });
   cp.chart = chart; cp.full = true; cp.lineKey = ""; cp.lines = [];
   if (cp.candles && cp.candles.tf === cp.tf) drawCandles(cp.candles);   // never draw another timeframe's candles
 }
@@ -1017,6 +1033,10 @@ function drawCandles(d) {
   const bars = d.candles.map((c) => ({ time: c[0] + TZO, open: c[1] * f, high: c[2] * f, low: c[3] * f, close: c[4] * f }));
   const vols = d.candles.map((c) => ({ time: c[0] + TZO, value: c[5] * (cp.data?.sol_usd || state?.sol_usd || 0), color: c[4] >= c[1] ? green : red }));
   if (!bars.length) return;
+  if (cp.hs && d.holders) {                                  // holder count per candle (from the recorded trades)
+    const hh = []; for (const [t, n] of d.holders) { const tt = t + TZO; if (hh.length && hh[hh.length - 1].time === tt) hh[hh.length - 1].value = n; else hh.push({ time: tt, value: n }); }
+    cp.hs.setData(hh);
+  }
   if (cp.full || cp.lastT === null) {
     cp.cs.setData(bars); cp.vs.setData(vols); cp.full = false; cp.markKey = "";
   } else {
@@ -1120,8 +1140,10 @@ function renderCoin() {
       <small>◎${(p.buy || 0).toFixed(2)} bought by ${p.buyers || 0} · ◎${(p.sell || 0).toFixed(2)} sold by ${p.sellers || 0}</small></div>`; }).join("");
   const dv = d.dev || []; $("#cpdevn").textContent = dv.length ? `(${dv.length})` : "";
   if (cp.noteTag === null) {                                  // fill the note once per visit (do not overwrite typing)
-    const n = i.note || {}; cp.noteTag = n.tag || ""; $("#cpnote").value = n.text || "";
+    const n = i.note || {}; cp.noteTag = n.tag || ""; $("#cpnote").value = n.text || ""; $("#cpnoteshare").checked = !!n.shared;
   }
+  $("#cpfriends").innerHTML = (i.friends || []).length ? '<div class="wnote" style="margin-top:10px">Friends</div>' + i.friends.map((f) =>
+    `<div class="note" style="margin-top:4px"><b>${esc(f.name)}</b>${f.tag ? `<span class="ntag">${NOTE_TAGS[f.tag]}</span>` : ""}${f.text ? `<span>${esc(f.text)}</span>` : ""}</div>`).join("") : "";
   $("#cpntags").innerHTML = Object.entries(NOTE_TAGS).map(([k, v]) => `<button data-ntag="${k}" class="${cp.noteTag === k ? "on" : ""}">${v}</button>`).join("");
   $("#cpntags").querySelectorAll("[data-ntag]").forEach((b) => b.onclick = () => { cp.noteTag = cp.noteTag === b.dataset.ntag ? "" : b.dataset.ntag; saveNote(); });
   const mn = d.mine;
@@ -1204,7 +1226,7 @@ async function repairCoin() {
 async function saveNote() {
   const i = cp.data?.info; if (!i) return;
   try {
-    await fetch("/api/note", { method: "POST", headers: { "Content-Type": "application/json", ...AH() }, body: JSON.stringify({ mint: i.mint, text: $("#cpnote").value, tag: cp.noteTag || "" }) });
+    await fetch("/api/note", { method: "POST", headers: { "Content-Type": "application/json", ...AH() }, body: JSON.stringify({ mint: i.mint, text: $("#cpnote").value, tag: cp.noteTag || "", share: $("#cpnoteshare").checked }) });
     toast("Note saved"); cpRefresh(); tick();
   } catch (e) { toast("Note not saved", false); }
 }
@@ -1324,7 +1346,9 @@ async function wpRefresh() {
   try {
     const r = await fetch("/api/wallet", { headers: AH() });
     if (r.status === 401) return on401(r);
-    wp.data = await r.json();
+    const fresh = await r.json();
+    if (!wp.open) return;                                      // the page was closed meanwhile
+    wp.data = fresh;
   } catch (e) { return; }
   const d = wp.data, s = d.summary || {};
   if (!s.address) {
@@ -1823,6 +1847,7 @@ function settingsHtml(st) {
     return `<div class="row"><label for="${id}">${label}${help ? `<small>${help}</small>` : ""}</label>${input}${unit ? `<span class="unit">${unit}</span>` : ""}</div>`;
   };
   return `<div class="sec"><h3>Account</h3><div class="row"><label>${esc(state.email)}</label><button class="iconbtn" id="slogout">Log out</button></div>
+      <div class="row"><label for="s_display_name">Name for friends<small>shown next to notes you share</small></label><input type="text" id="s_display_name" value="${esc(st.display_name || "")}" maxlength="24" autocomplete="off"></div>
       <div class="row"><label>Test alert<small>flash, sound and a push to your ntfy topic</small></label><button class="iconbtn" id="stest">Send test</button></div>
       <div class="row"><label>Daily summary<small>what the daily push would say right now</small></label><button class="iconbtn" id="sdaily">Preview</button></div>
       <pre id="sdailyout" style="display:none;white-space:pre-wrap;font:12px/1.4 ui-monospace,monospace;color:var(--muted);background:var(--panel2);border-radius:8px;padding:8px;margin:4px 0 0"></pre></div>` +
@@ -1856,6 +1881,7 @@ function readSettings() {
   ["bg", "panel", "text", "accent"].forEach((k) => out[k] = $("#s_" + k).value);
   if ($("#s_card_view")) out.card_view = $("#s_card_view").value;
   if ($("#s_font_scale")) out.font_scale = +$("#s_font_scale").value;
+  if ($("#s_display_name")) out.display_name = $("#s_display_name").value.trim();
   out.tz_min = -new Date().getTimezoneOffset();               // quiet hours in your local time
   return out;
 }

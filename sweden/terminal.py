@@ -1157,6 +1157,7 @@ class Terminal:
             if row["wallet"] in lab:
                 row["label"] = lab[row["wallet"]]
         info["note"] = self.acc.users()[uid]["notes"].get(mint)
+        info["friends"] = [n for n in self.acc.shared_notes.get(mint, []) if n["uid"] != uid]
         with self.lock:
             c = self.coins.get(mint)
             info["res"] = list(c.res) if c and c.res else None
@@ -1173,9 +1174,16 @@ class Terminal:
                 return dict(found=False)
             tr = sorted(c.trades, key=lambda x: (x[0], x[1]))
             grad = c.grad_ts
-        out, cur = [], None
+        out, cur, bal, n_hold, holders = [], None, collections.Counter(), 0, []
         for x in tr:
             t = int(x[2] // tf * tf)
+            before = bal[x[6]] > 0                               # holder count over time (wallets with tokens)
+            bal[x[6]] += x[7] if x[5] else -x[7]
+            n_hold += (bal[x[6]] > 0) - before
+            if not holders or holders[-1][0] != t:
+                holders.append([t, n_hold])
+            else:
+                holders[-1][1] = n_hold
             if cur is None or t != cur[0]:
                 if cur is not None:
                     out.append(cur)
@@ -1185,7 +1193,7 @@ class Terminal:
             cur[5] += x[4] / 1e9
         if cur is not None:
             out.append(cur)
-        return dict(found=True, tf=tf, candles=out[-1500:], grad_ts=grad, sol_usd=self.usd)
+        return dict(found=True, tf=tf, candles=out[-1500:], holders=holders[-1500:], grad_ts=grad, sol_usd=self.usd)
 
     def axiom_check(self, mint, vals):
         """Store what Axiom shows for a coin next to our live variants at the same moment (data/axiom_checks.jsonl)."""
@@ -1256,7 +1264,14 @@ class Terminal:
                     smart=sum(1 for w in self.smart_set if c.H.hold.get(w, 0) > 0)))
             alerts = list(self.alerts[uid])
         self.wallets.touch(uid)
-        return dict(now=now, live=self.live, sol_usd=self.usd, coins=out, alerts=alerts, all=show_all, counts=counts,
+        try:
+            stt = json.load(open(os.path.join(R.DATA, "status.json")))
+            up = max(1, stt.get("uptime_s") or 1)
+            heat = dict(launches_h=stt.get("stored_C", 0) / up * 3600, grads_h=stt.get("stored_G", 0) / up * 3600,
+                        hours=up / 3600, live=stt.get("live_connections"))
+        except (OSError, ValueError):
+            heat = None
+        return dict(now=now, live=self.live, sol_usd=self.usd, coins=out, alerts=alerts, all=show_all, counts=counts, heat=heat,
                     wallet=self.wallets.summary(uid),
                     radar=sorted(radar, key=lambda r: r["grad_min"]), email=u["email"], settings=s, tracked=u["tracked"],
                     defaults=self.acc.defaults)
@@ -1421,7 +1436,7 @@ def serve(t, port):
                     return self.send(400, {"ok": False})
             if p == "/api/note":
                 try:
-                    acc.set_note(uid, str(b["mint"])[:64], str(b.get("text", "")), str(b.get("tag", "")))
+                    acc.set_note(uid, str(b["mint"])[:64], str(b.get("text", "")), str(b.get("tag", "")), bool(b.get("share")))
                     return self.send(200, {"ok": True})
                 except (KeyError, TypeError):
                     return self.send(400, {"ok": False})
@@ -1475,7 +1490,7 @@ def main():
         prior_max=R.FILTER["max_prior_launches"], copy_check=True, wash_check=True, mayhem=a.mayhem,
         show_dd=a.show_dd, dd_min=a.dd_min, dd_max=a.dd_max, bounce=a.bounce, pullback=a.pullback,
         alert_new=True, alert_entry=True, alert_watch=True, alert_danger=True, alert_grad=True, alert_track=True, ntfy_topic="", quiet_from=-1, quiet_to=-1, tz_min=0,
-        sound="chime", card_view="cards", daily_hour=-1, font_scale=1.0,
+        sound="chime", card_view="cards", daily_hour=-1, font_scale=1.0, display_name="",
         bg="#07080c", panel="#0f1117", text="#e9ecf5", accent="#526fff", radar_mode="radar")
     acc = A.Accounts(os.path.join(R.DATA, "users.db"), os.path.join(R.DATA, "secret.key"), MAIL_FILE, defaults,
                      prefs_file=PREFS_FILE, owner_topic=os.environ.get("SWEDEN_NTFY_TOPIC", ""))
