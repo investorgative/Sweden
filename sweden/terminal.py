@@ -37,6 +37,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 sys.path.insert(0, os.path.dirname(__file__))
 import accounts as A
 import journal as JN
+import memberfeed as MF
 import social as SO
 import replay as R
 import signals as SG
@@ -397,7 +398,7 @@ class Terminal:
                 if r[5] in self.acc.tracked_idx:
                     self.check_tracked(c, r[5], r[6], r[7], mc)
                 if r[5] in self.uwallets:
-                    self.member_trade(c, r[5], r[6], r[7], r[8], mc, r[3])
+                    self.member_trade(c, r[5], r[6], r[7], r[8], mc, r[3], r[1])
         elif kind == "G":
             if c.S is not None:
                 c.feat = c.S.features()
@@ -437,7 +438,7 @@ class Terminal:
                 if r[5] in self.acc.tracked_idx:
                     self.check_tracked(c, r[5], buy, quote, Q / B * 1e6)
                 if r[5] in self.uwallets:
-                    self.member_trade(c, r[5], buy, quote, base, Q / B * 1e6, r[3])
+                    self.member_trade(c, r[5], buy, quote, base, Q / B * 1e6, r[3], r[1])
 
     def price_update(self, c, p, ts, slot):
         b = c.pts.get(ts // 5)                          # swaps arrive over several connections, not in order
@@ -538,16 +539,22 @@ class Terminal:
             rows = self.wallets.db.execute("SELECT uid, address FROM wallets WHERE address IS NOT NULL").fetchall()
         self.uwallets = {a: u for u, a in rows if a}
 
-    def member_trade(self, c, wallet, buy, lamports, tokens, mcap_sol, ts):
-        """A member's wallet traded (from the live feed). Kept for friends' views; alerts friends who asked for it."""
+    def member_trade(self, c, wallet, buy, lamports, tokens, mcap_sol, ts, sig8=""):
+        """A member's wallet traded (program-wide feed or the members' own wallet feed). Kept for friends' views;
+        alerts friends who asked for it. The same trade from both feeds is counted once (signature + amount)."""
         uid = self.uwallets.get(wallet)
         if uid is None:
             return
         lst = self.utr[uid][c.mint]
         tokens = tokens / 1e6                                # raw units -> tokens (pump.fun coins: 6 decimals)
-        if any(abs(x[0] - ts) < 1e-6 and x[1] == buy and abs(x[3] - tokens) < 1e-9 for x in lst[-5:]):
-            return                                           # the same trade from a second connection
-        lst.append((ts, bool(buy), lamports / 1e9, tokens, mcap_sol))
+        if any(x[5] == sig8[:8] and x[1] == bool(buy) and abs(x[3] - tokens) < 1e-9 for x in lst[-30:] if sig8) or \
+           any(abs(x[0] - ts) < 1e-6 and x[1] == bool(buy) and abs(x[3] - tokens) < 1e-9 for x in lst[-5:]):
+            self.member_added = getattr(self, "member_added", collections.Counter())
+            self.member_added["dup_" + ("feed" if sig8 and len(sig8) > 8 else "main")] += 1
+            return
+        lst.append((ts, bool(buy), lamports / 1e9, tokens, mcap_sol, sig8[:8]))
+        self.member_added = getattr(self, "member_added", collections.Counter())
+        self.member_added["feed" if sig8 and len(sig8) > 8 else "main"] += 1
         if not self.live or c.repairing or not buy:
             return
         users = self.acc.users()
@@ -564,6 +571,24 @@ class Terminal:
             self.fr_alert_at[k] = time.time()
             size = f" for ◎{lamports / 1e9:.2f}" if sh["show_capital"] else ""
             self.alert(c, fid, "friend", f"{self.social.name(uid, users, fid)} bought ${c.sym}{size} at mcap {usd_text(mcap_sol * self.usd)}")
+
+    def member_record(self, wallet, slot, sig, rec):
+        """A pump.fun / PumpSwap trade of a member's wallet from the members' own feed (memberfeed.py)."""
+        with self.lock:
+            if rec[0] == "T":
+                c = self.coins.get(rec[2])
+                if c is None or not rec[8]:
+                    return
+                self.member_trade(c, wallet, rec[4], rec[5], rec[6], rec[7] / rec[8] * 1e6, rec[1], sig)
+            else:
+                c = next((x for x in self.coins.values() if x.pool == rec[2]), None)
+                if c is None:
+                    return
+                buy, base, quote, pb, pq, vq = rec[4], rec[5], rec[6], rec[7], rec[8], rec[9]
+                B = pb - base if buy else pb + base
+                Q = (pq + quote if buy else pq - quote) + vq
+                if B > 0 and Q > 0:
+                    self.member_trade(c, wallet, buy, quote, base, Q / B * 1e6, rec[1], sig)
 
     def position(self, uid, mint, mcap_usd=None):
         """A member's position in a coin: from the recorded trades (live feed) and, if known, the wallet balance."""
@@ -654,7 +679,9 @@ class Terminal:
         req_out = [dict(so.card(b, users), ts=ts) for a, b, ts in so.requests if a == uid and b in users]
         feed.sort(key=lambda x: -x["ts"])
         return dict(me=so.card(uid, users), friends=friends, req_in=req_in, req_out=req_out, feed=feed[:80],
-                    defaults=so.defaults(uid), has_wallet=bool(self.wallets.address(uid)))
+                    defaults=so.defaults(uid), has_wallet=bool(self.wallets.address(uid)),
+                    feed_status=dict(getattr(self, "mfeed", None).status if getattr(self, "mfeed", None) else {}, added=dict(getattr(self, "member_added", {})),
+                              mb_today=round(self.mfeed.bytes_day[1] / 1e6, 2) if getattr(self, "mfeed", None) else 0))
 
     def watch_graduated(self, c):
         if not self.live:
@@ -1842,9 +1869,13 @@ def main():
     t.journal = JN.Journal(os.path.join(R.DATA, "journal.db"))
     t.social = SO.Social(os.path.join(R.DATA, "social.db"))
     t.refresh_uwallets()
+    kf = os.environ.get("SWEDEN_MEMBERFEED_KEY_FILE") or HELIUS_KEY_FILE
+    key = open(kf).read().strip() if os.path.exists(kf) else ""
+    t.mfeed = MF.MemberFeed(key, lambda: set(t.uwallets), t.member_record, on_rpc=lambda: t.repair_calls.append(time.time()))
     for target in (t.loop, t.meta_worker, t.price_worker, t.link_worker, t.wallets.worker, t.daily_worker, t.smart_worker,
                    t.repair_worker, t.journal_worker):
         threading.Thread(target=target, daemon=True).start()
+    t.mfeed.start()
     log(f"SWEDEN terminal on http://0.0.0.0:{a.port}  ({len(acc.users())} account(s), "
         f"mail: {'Gmail' if acc.mailer.cfg else 'not set up - codes go to this log'}, "
         f"wallets: {'Helius' if t.wallets.h else 'no helius_key'})")
