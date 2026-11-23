@@ -7,21 +7,26 @@
 <title>Sweden terminal</title>
 <style>
   :root {
-    --bg: #07080c; --panel: #0f1117; --panel2: #161923; --panel3: #1d2130; --line: #222634; --text: #e9ecf5;
-    --muted: #7d8396; --faint: #4b5063; --green: #2fe3ac; --red: #ec397a; --blue: #526fff; --yellow: #f5c249;
+    /* four base colours per user (Settings > Style); the rest is mixed from them */
+    --bg: #07080c; --panel: #0f1117; --text: #e9ecf5; --blue: #526fff;
+    --panel2: color-mix(in srgb, var(--panel), var(--text) 5%); --panel3: color-mix(in srgb, var(--panel), var(--text) 9%);
+    --line: color-mix(in srgb, var(--panel), var(--text) 11%);
+    --muted: color-mix(in srgb, var(--text) 55%, var(--bg)); --faint: color-mix(in srgb, var(--text) 32%, var(--bg));
+    --accent-soft: color-mix(in srgb, var(--blue) 50%, transparent);
+    --green: #2fe3ac; --red: #ec397a; --yellow: #f5c249;
     --orange: #ff8a3d; --cyan: #3fc8ff; --purple: #a78bfa;
     --dip: var(--yellow); --zone: var(--orange); --bounce: var(--cyan); --entry: var(--green); --top: var(--muted); --dead: var(--faint);
   }
   * { box-sizing: border-box; }
   html { -webkit-text-size-adjust: 100%; }
   body { margin: 0; min-height: 100vh;
-         background: radial-gradient(1100px 420px at 50% -180px, rgba(82,111,255,.11), transparent 70%), var(--bg); color: var(--text); font: 14px/1.35 Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+         background: radial-gradient(1100px 420px at 50% -180px, color-mix(in srgb, var(--blue) 11%, transparent), transparent 70%), var(--bg); color: var(--text); font: 14px/1.35 Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
   button { font: inherit; color: inherit; cursor: pointer; }
   svg.i { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; flex: none; }
   .num { font-variant-numeric: tabular-nums; }
 
   /* header */
-  header { position: sticky; top: 0; z-index: 5; background: rgba(7,8,12,.94); backdrop-filter: blur(8px);
+  header { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--bg) 94%, transparent); backdrop-filter: blur(8px);
            border-bottom: 1px solid var(--line); padding: 10px 16px; }
   .bar { display: flex; align-items: center; gap: 10px; max-width: 1500px; margin: 0 auto; }
   .logo { font-weight: 800; font-size: 16px; letter-spacing: .2px; white-space: nowrap; }
@@ -55,7 +60,7 @@
   @keyframes enter { from { opacity: 0; transform: translateY(8px); } }
 
   /* radar */
-  #radar { background: linear-gradient(180deg, rgba(22,25,35,.75), rgba(15,17,23,.75)); border: 1px solid var(--line);
+  #radar { background: linear-gradient(180deg, color-mix(in srgb, var(--panel2) 75%, transparent), color-mix(in srgb, var(--panel) 75%, transparent)); border: 1px solid var(--line);
            border-radius: 16px; padding: 18px; display: grid; grid-template-columns: auto 1fr; gap: 22px; align-items: center; }
   #radar[hidden] { display: none; }
   #radar.compact { order: 2; padding: 12px 14px; gap: 14px; }
@@ -67,7 +72,7 @@
   .rlab { fill: var(--faint); font-size: 6px; }
   #radar.compact .rlab { display: none; }
   .sweep { position: absolute; inset: 0; border-radius: 50%; pointer-events: none; will-change: transform;
-           background: conic-gradient(from 0deg, transparent 0deg 300deg, rgba(82,111,255,.04) 310deg, rgba(82,111,255,.22) 359deg, transparent 360deg);
+           background: conic-gradient(from 0deg, transparent 0deg 300deg, color-mix(in srgb, var(--blue) 4%, transparent) 310deg, color-mix(in srgb, var(--blue) 22%, transparent) 359deg, transparent 360deg);
            animation: sweep 6s linear infinite; }
   @keyframes sweep { to { transform: rotate(360deg); } }
   .blip.rec { fill: var(--green); } .blip.watch { fill: var(--yellow); } .blip.waiting { fill: var(--cyan); }
@@ -90,7 +95,7 @@
   .feed { display: flex; flex-direction: column; gap: 4px; }
   #radar.compact .feed { display: none; }
   .frow { display: grid; grid-template-columns: 9px minmax(60px, 1fr) auto auto; gap: 10px; align-items: center; font-size: 12px;
-          padding: 6px 8px; border-radius: 8px; background: rgba(22,25,35,.6); cursor: pointer; }
+          padding: 6px 8px; border-radius: 8px; background: color-mix(in srgb, var(--panel2) 60%, transparent); cursor: pointer; }
   .frow:hover { background: var(--panel2); }
   .frow .s { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .frow .s small { color: var(--muted); font-weight: 400; margin-left: 6px; }
@@ -110,7 +115,7 @@
                      68% { opacity: .9; } 100% { opacity: 0; } }
 
   /* pasted CA: status bar and highlighted card */
-  #jump { display: none; align-items: center; gap: 10px; background: var(--panel); border: 1px solid rgba(82,111,255,.55);
+  #jump { display: none; align-items: center; gap: 10px; background: var(--panel); border: 1px solid var(--accent-soft);
           border-radius: 12px; padding: 10px 12px; margin: 0 0 12px; font-size: 13px; }
   #jump.show { display: flex; }
   #jump .jt { flex: 1; min-width: 0; }
@@ -143,8 +148,67 @@
   .orow .ol { display: flex; gap: 6px; }
   .orow .ol a, .orow .ol button { font-size: 11px; padding: 3px 7px; border-radius: 6px; background: var(--panel2); border: 1px solid var(--line);
                                    color: var(--muted); text-decoration: none; }
-  .orow.top { outline: 1px solid rgba(82,111,255,.5); }
+  .orow.top { outline: 1px solid var(--accent-soft); }
   svg.ochart { width: 100%; height: 110px; display: block; background: var(--panel3); border-radius: 8px; }
+
+  /* account screen (after the passkey) */
+  #account { position: fixed; inset: 0; z-index: 10; background: var(--bg); display: none; align-items: center; justify-content: center;
+             padding: 16px; overflow-y: auto; }
+  #account.show { display: flex; }
+  #account form { width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: 10px; }
+  #account .atabs { display: flex; gap: 6px; } #account .atabs button { flex: 1; }
+  #account input { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 13px; font-size: 16px; }
+  #account input:focus { outline: none; border-color: var(--blue); }
+  #account .primary { background: var(--blue); color: #fff; border: 0; border-radius: 10px; padding: 13px; font-weight: 700; font-size: 16px; }
+  #account .link { background: none; border: 0; color: var(--muted); font-size: 13px; padding: 4px; }
+  #account .hint { color: var(--muted); font-size: 13px; text-align: center; }
+  #accmsg { color: var(--red); min-height: 1.3em; font-size: 13px; text-align: center; }
+  #accmsg.ok { color: var(--green); }
+
+  /* settings drawer */
+  #settings { position: fixed; inset: 0; z-index: 9; display: none; }
+  #settings.show { display: block; }
+  #settings .shade { position: absolute; inset: 0; background: rgba(0,0,0,.55); }
+  #settings .drawer { position: absolute; top: 0; right: 0; bottom: 0; width: min(440px, 100%); background: var(--panel);
+                      border-left: 1px solid var(--line); display: flex; flex-direction: column; }
+  #settings .dhead { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+  #settings .dhead b { flex: 1; font-size: 16px; }
+  #settings .dbody { flex: 1; overflow-y: auto; padding: 6px 16px 20px; }
+  #settings .dfoot { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); }
+  #settings .dfoot button { flex: 1; padding: 12px; border-radius: 10px; font-weight: 700; border: 1px solid var(--line); background: var(--panel2); }
+  #settings .dfoot .save { background: var(--blue); color: #fff; border: 0; }
+  .sec { padding: 14px 0 6px; border-bottom: 1px solid var(--line); }
+  .sec h3 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); }
+  .row { display: flex; align-items: center; gap: 10px; padding: 6px 0; font-size: 14px; }
+  .row label { flex: 1; } .row small { display: block; color: var(--faint); font-size: 11px; }
+  .row input[type=number], .row input[type=text], .row select { width: 120px; background: var(--panel2); color: var(--text);
+        border: 1px solid var(--line); border-radius: 8px; padding: 8px; font-size: 14px; }
+  .row input[type=text] { width: 170px; }
+  .row .unit { color: var(--muted); font-size: 12px; width: 22px; }
+  .row input[type=color] { width: 44px; height: 32px; border: 1px solid var(--line); border-radius: 8px; background: none; padding: 2px; }
+  .row input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--blue); }
+  .presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .presets button { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line);
+                    background: var(--panel2); font-size: 12px; }
+  .presets i { width: 14px; height: 14px; border-radius: 4px; display: inline-block; border: 1px solid var(--line); }
+  .modes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .modes button { padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel2); text-align: left; font-size: 13px; }
+  .modes button small { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
+  .modes button.on { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue) inset; }
+
+  /* other empty-screen designs: live feed and heat grid */
+  #radar.mode-pulse, #radar.mode-grid { grid-template-columns: 1fr; }
+  .pfeed { display: flex; flex-direction: column; gap: 6px; }
+  .prow { display: grid; grid-template-columns: 4px minmax(70px, 1fr) auto auto; gap: 12px; align-items: center; padding: 10px 12px 10px 0;
+          border-radius: 10px; background: var(--panel2); cursor: pointer; overflow: hidden; }
+  .prow .bar { align-self: stretch; } .prow .s { font-weight: 700; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .prow .s small { display: block; color: var(--muted); font-weight: 400; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .prow .m { font-weight: 700; } .prow .t { color: var(--faint); font-size: 12px; }
+  .hgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 6px; }
+  .tile { border-radius: 10px; padding: 9px 10px; cursor: pointer; min-width: 0; border: 1px solid transparent;
+          background: color-mix(in srgb, var(--tc) 14%, var(--panel2)); border-color: color-mix(in srgb, var(--tc) 35%, transparent); }
+  .tile b { display: block; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tile span { display: block; color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation: none !important; transition: none !important; }
@@ -199,7 +263,7 @@
 
   .chartbox { position: relative; background: var(--panel2); border-radius: 10px; overflow: hidden; }
   svg.chart { width: 100%; height: 190px; display: block; }
-  .clabel { position: absolute; font-size: 11px; color: var(--muted); background: rgba(22,25,35,.85); padding: 1px 6px; border-radius: 6px; }
+  .clabel { position: absolute; font-size: 11px; color: var(--muted); background: color-mix(in srgb, var(--panel2) 85%, transparent); padding: 1px 6px; border-radius: 6px; }
   .clabel.tl { top: 6px; left: 6px; } .clabel.bl { bottom: 6px; left: 6px; } .clabel.br { bottom: 6px; right: 6px; }
   .clabel.tr { top: 6px; right: 6px; }
 
@@ -276,6 +340,7 @@
     <button class="iconbtn" id="pasteca" title="Jump to the coin whose CA is in your clipboard (or press Ctrl+V anywhere)"></button>
     <button class="iconbtn" id="testpush" title="Send a test push to your phone (ntfy)"></button>
     <button class="iconbtn" id="sound" title="Sound and notifications"></button>
+    <button class="iconbtn" id="opensettings" title="Settings"></button>
     <button class="iconbtn" id="lock" title="Lock"></button>
   </div>
   <div class="tabs" id="tabs"></div>
@@ -291,6 +356,24 @@
   </div>
   <div class="axrow"><button type="button" id="axcancel">Cancel</button><button type="submit">Save</button></div>
 </form></div>
+<div id="account"><form id="accform" autocomplete="on" novalidate>
+  <div class="logo" style="font-size:20px;text-align:center">🇸🇪 Sweden terminal</div>
+  <div class="atabs" id="atabs"><button type="button" class="tab" data-amode="login">Log in</button><button type="button" class="tab" data-amode="signup">Sign up</button></div>
+  <div class="hint" id="acchint"></div>
+  <input id="acemail" type="email" autocomplete="email" placeholder="Email" aria-label="Email">
+  <input id="acpw" type="password" autocomplete="current-password" placeholder="Password (at least 8 characters)" aria-label="Password">
+  <input id="accode" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="6-digit code from the email" aria-label="Code" maxlength="6">
+  <button type="submit" class="primary" id="accsubmit">Log in</button>
+  <div id="accmsg"></div>
+  <button type="button" class="link" id="accforgot">Forgot password?</button>
+  <button type="button" class="link" id="accresend" hidden>Send the code again</button>
+  <button type="button" class="link" id="accback" hidden>Back to log in</button>
+</form></div>
+<div id="settings"><div class="shade" data-close="1"></div><div class="drawer">
+  <div class="dhead"><b>Settings</b><button class="iconbtn" data-close="1" aria-label="Close">✕</button></div>
+  <div class="dbody" id="sbody"></div>
+  <div class="dfoot"><button type="button" id="sreset">My defaults</button><button type="button" class="save" id="ssave">Save</button></div>
+</div></div>
 <div id="login"><form id="loginform" autocomplete="off">
   <div class="logo" style="font-size:20px">🇸🇪 Sweden terminal</div>
   <input id="pk" type="password" autocomplete="current-password" placeholder="Passkey" aria-label="Passkey">
@@ -330,6 +413,7 @@ const P = {
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
   paste: '<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
   phone: '<rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/>',
 };
 const ic = (n) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${P[n]}</svg>`;
@@ -339,11 +423,12 @@ const LABEL = { entry: "Entry", bounce: "Bounce", zone: "In zone", dip: "Dip", t
 const TABS = [["all", "Recommended"], ["watch", "★ Watchlist"], ["entry", "Entry"], ["bounce", "Bounce"], ["zone", "Zone"],
               ["dip", "Dip"], ["filtered", "Filtered out"], ["hidden", "Hidden by me"]];
 const NEEDS_ALL = ["filtered", "hidden"];             // tabs that need the coins the filter hides
-let tab = "all", soundOn = false, audio = null, lastAlert = null, state = null, token = null;
+let tab = "all", soundOn = false, audio = null, lastAlert = null, state = null, token = null, userToken = null;
+const AH = () => ({ "X-Sweden-Token": token || "", "X-Sweden-User": userToken || "" });   // passkey + account
 const openDetails = new Set(), cardsSeen = new Set();
 let focusMint = null, focusScroll = false;
 let cardsReady = false;
-try { token = localStorage.getItem("swedenToken"); tab = localStorage.getItem("swedenTab") || "all"; } catch (e) {}
+try { token = localStorage.getItem("swedenToken"); userToken = localStorage.getItem("swedenUser"); tab = localStorage.getItem("swedenTab") || "all"; } catch (e) {}
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -390,7 +475,7 @@ function loadOrig(mint) {
   const hit = origCache.get(mint);
   if (origPending.has(mint) || (hit && Date.now() - hit.t < 60000)) return;
   origPending.add(mint);
-  fetch("/api/original?mint=" + encodeURIComponent(mint), { headers: { "X-Sweden-Token": token } })
+  fetch("/api/original?mint=" + encodeURIComponent(mint), { headers: AH() })
     .then((r) => r.json()).then((d) => origCache.set(mint, { t: Date.now(), d }))
     .catch(() => origCache.set(mint, { t: Date.now(), d: { matches: [], chart: [], error: "no connection" } }))
     .finally(() => { origPending.delete(mint); render(); });
@@ -498,62 +583,86 @@ const R_MAX = 100, R_MIN = 10, HOURS = 6;
 const STATUS = { rec: "Recommended", watch: "Watchlist", waiting: "Passes checks, waiting for the dip", filtered: "Filtered out",
                  mayhem: "Mayhem", dead: "Dead (crashed)" };
 const blips = new Map(), feedSeen = new Set();
-let radarBuilt = false, radarFirst = true;
+let radarFirst = true;
 function hash(s) { let h = 2166136261; for (const ch of s) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return (h >>> 0) / 4294967296; }
-function buildRadar() {
-  const rings = [1, 2, 3, 4, 5, 6].map((h) => { const r = R_MIN + (h / HOURS) * (R_MAX - R_MIN);
-    return `<circle class="ring${h === HOURS ? " outer" : ""}" r="${r}"/><text class="rlab" x="2" y="${-r + 7}">${h}h</text>`; }).join("");
-  $("#radar").innerHTML = `<div class="rwrap"><svg viewBox="-104 -104 208 208" aria-hidden="true">
-      <line class="ring" x1="-${R_MAX}" x2="${R_MAX}" y1="0" y2="0"/><line class="ring" y1="-${R_MAX}" y2="${R_MAX}" x1="0" x2="0"/>
-      ${rings}<circle r="2" fill="var(--blue)"/><g id="blips"></g><g id="pings"></g></svg><div class="sweep"></div></div>
-    <div class="rinfo"><div class="rtitle"><span class="dot live"></span><span id="rtitle">Scanning graduates</span></div>
-      <div class="rsub">Every pump.fun graduate of the last ${HOURS} h. Centre = just graduated, each ring one more hour. Tap a row to copy its CA.</div>
-      <div class="rstats num" id="rstats"></div><div class="feed" id="feed"></div></div>`;
-  radarBuilt = true;
+let radarMode = null;
+function buildRadar(mode) {
+  blips.clear(); radarFirst = true; radarMode = mode;
+  const head = (title, sub) => `<div class="rtitle"><span class="dot live"></span><span id="rtitle">${title}</span></div>
+      <div class="rsub">${sub}</div><div class="rstats num" id="rstats"></div>`;
+  if (mode === "pulse") {
+    $("#radar").innerHTML = `<div class="rinfo">${head("Live graduations", "Every pump.fun graduate of the last 6 h, newest first. Tap one to copy its CA.")}<div class="pfeed" id="feed"></div></div>`;
+  } else if (mode === "grid") {
+    $("#radar").innerHTML = `<div class="rinfo">${head("Heat grid", "One tile per graduate of the last 6 h, coloured by status, newest first. Tap a tile to copy its CA.")}<div class="hgrid" id="feed"></div></div>`;
+  } else {
+    const rings = [1, 2, 3, 4, 5, 6].map((h) => { const r = R_MIN + (h / HOURS) * (R_MAX - R_MIN);
+      return `<circle class="ring${h === HOURS ? " outer" : ""}" r="${r}"/><text class="rlab" x="2" y="${-r + 7}">${h}h</text>`; }).join("");
+    $("#radar").innerHTML = `<div class="rwrap"><svg viewBox="-104 -104 208 208" aria-hidden="true">
+        <line class="ring" x1="-${R_MAX}" x2="${R_MAX}" y1="0" y2="0"/><line class="ring" y1="-${R_MAX}" y2="${R_MAX}" x1="0" x2="0"/>
+        ${rings}<circle r="2" fill="var(--blue)"/><g id="blips"></g><g id="pings"></g></svg><div class="sweep"></div></div>
+      <div class="rinfo">${head("Scanning graduates", `Every pump.fun graduate of the last ${HOURS} h. Centre = just graduated, each ring one more hour. Tap a row to copy its CA.`)}<div class="feed" id="feed"></div></div>`;
+  }
 }
+const TILE = { rec: "var(--green)", watch: "var(--yellow)", waiting: "var(--cyan)", filtered: "var(--red)", mayhem: "var(--purple)", dead: "var(--faint)" };
+const whyText = (r) => r.status === "waiting" ? "passes checks · waiting for the dip" : r.status === "rec" || r.status === "watch" ? STATUS[r.status] : r.why;
 function updateRadar() {
   const el = $("#radar"), rec = state.coins.filter((c) => c.visible && !c.user_hidden).length;
-  const hero = tab === "all" && rec === 0;
-  el.hidden = !(tab === "all" || tab === "watch");
+  const mode = (state.settings || {}).radar_mode || "radar", hero = tab === "all" && rec === 0;
+  el.hidden = mode === "off" || !(tab === "all" || tab === "watch");
+  if (mode === "off" && tab === "all" && rec === 0 && !$("#grid").innerHTML)
+    $("#grid").innerHTML = '<div class="empty">Nothing recommended right now. Waiting for graduates that dip…</div>';
   if (el.hidden) return;
-  if (!radarBuilt) buildRadar();
-  el.className = hero ? "hero" : "compact";
+  if (mode !== radarMode) buildRadar(mode);
+  el.className = (hero ? "hero" : "compact") + " mode-" + mode;
   const rs = (state.radar || []).filter((r) => r.status !== "hidden");
   const n = (st) => rs.filter((r) => r.status === st).length;
-  $("#rtitle").textContent = hero ? "Scanning graduates" : "Radar";
+  $("#rtitle").textContent = { radar: hero ? "Scanning graduates" : "Radar", pulse: "Live graduations", grid: "Heat grid" }[mode];
   $("#rstats").innerHTML = [["waiting", "Waiting for dip", n("waiting")], ["filtered", "Filtered out", n("filtered")],
     ["mayhem", "Mayhem", n("mayhem")], ["dead", "Dead", n("dead")]]
     .map(([st, k, v]) => `<div class="rs"><div class="v">${v}</div><div class="k"><span class="lg c-${st}"></span>${k}</div></div>`).join("");
-  // blips: create new ones (with a single ping), move existing ones, drop gone ones
-  const g = $("#blips"), live = new Set();
-  for (const r of rs) {
-    live.add(r.mint);
-    const rad = R_MIN + Math.min(r.grad_min / 60, HOURS) / HOURS * (R_MAX - R_MIN), a = hash(r.mint) * 2 * Math.PI;
-    const x = (Math.cos(a) * rad).toFixed(1), y = (Math.sin(a) * rad).toFixed(1);
-    let b = blips.get(r.mint);
-    if (!b) {
-      b = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      b.setAttribute("r", r.status === "rec" || r.status === "watch" ? 3.4 : 2.4);
-      g.appendChild(b); blips.set(r.mint, b);
-      if (!radarFirst) {
-        const pg = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-        pg.setAttribute("class", "ping"); pg.setAttribute("cx", x); pg.setAttribute("cy", y); pg.setAttribute("r", 2.4);
-        $("#pings").appendChild(pg); setTimeout(() => pg.remove(), 1500);
+  const fresh = (m) => !radarFirst && !feedSeen.has(m);
+  if (mode === "pulse") {
+    const rows = rs.slice(0, hero ? 25 : 6);
+    $("#feed").innerHTML = rows.length ? rows.map((r) => `<div class="prow${fresh(r.mint) ? " enter" : ""}" data-copy="${esc(r.mint)}">
+        <span class="bar c-${r.status}"></span><span class="s">$${esc(r.sym)}<small>${esc(whyText(r))}</small></span>
+        <span class="m num">${usd(r.mcap_usd)}</span><span class="t">${dur(r.grad_min)}</span></div>`).join("")
+      : '<div class="ftitle">No graduations in the last hours</div>';
+    rows.forEach((r) => feedSeen.add(r.mint));
+  } else if (mode === "grid") {
+    const tiles = hero ? rs : rs.slice(0, 24);
+    $("#feed").innerHTML = tiles.map((r) => `<div class="tile${fresh(r.mint) ? " enter" : ""}" style="--tc:${TILE[r.status] || "var(--faint)"}" data-copy="${esc(r.mint)}" title="${esc(whyText(r))}">
+        <b>$${esc(r.sym)}</b><span class="num">${usd(r.mcap_usd)} · ${dur(r.grad_min)}</span><span>${esc(STATUS[r.status] || r.status)}</span></div>`).join("")
+      || '<div class="ftitle">No graduations in the last hours</div>';
+    tiles.forEach((r) => feedSeen.add(r.mint));
+  } else {
+    // blips: create new ones (with a single ping), move existing ones, drop gone ones
+    const g = $("#blips"), live = new Set();
+    for (const r of rs) {
+      live.add(r.mint);
+      const rad = R_MIN + Math.min(r.grad_min / 60, HOURS) / HOURS * (R_MAX - R_MIN), a = hash(r.mint) * 2 * Math.PI;
+      const x = (Math.cos(a) * rad).toFixed(1), y = (Math.sin(a) * rad).toFixed(1);
+      let b = blips.get(r.mint);
+      if (!b) {
+        b = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        b.setAttribute("r", r.status === "rec" || r.status === "watch" ? 3.4 : 2.4);
+        g.appendChild(b); blips.set(r.mint, b);
+        if (!radarFirst) {
+          const pg = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+          pg.setAttribute("class", "ping"); pg.setAttribute("cx", x); pg.setAttribute("cy", y); pg.setAttribute("r", 2.4);
+          $("#pings").appendChild(pg); setTimeout(() => pg.remove(), 1500);
+        }
       }
+      b.setAttribute("class", "blip " + r.status); b.setAttribute("cx", x); b.setAttribute("cy", y);
+      b.innerHTML = `<title>${esc(r.sym)} · ${esc(STATUS[r.status] || r.status)}</title>`;
     }
-    b.setAttribute("class", "blip " + r.status); b.setAttribute("cx", x); b.setAttribute("cy", y);
-    b.innerHTML = `<title>${esc(r.sym)} · ${esc(STATUS[r.status] || r.status)}</title>`;
+    for (const [m, b] of blips) if (!live.has(m)) { b.remove(); blips.delete(m); }
+    const recent = rs.slice(0, 8);
+    $("#feed").innerHTML = recent.length ? '<div class="ftitle">Latest graduations</div>' + recent.map((r) =>
+      `<div class="frow${fresh(r.mint) ? " enter" : ""}" data-copy="${esc(r.mint)}"><span class="lg c-${r.status}"></span>
+        <span class="s">$${esc(r.sym)}<small>${usd(r.mcap_usd)}</small></span><span class="w">${esc(whyText(r))}</span><span class="t">${dur(r.grad_min)}</span></div>`).join("")
+      : '<div class="ftitle">No graduations in the last hours</div>';
+    recent.forEach((r) => feedSeen.add(r.mint));
   }
-  for (const [m, b] of blips) if (!live.has(m)) { b.remove(); blips.delete(m); }
-  // feed of the latest graduations
-  const recent = rs.slice(0, 8);
-  $("#feed").innerHTML = recent.length ? '<div class="ftitle">Latest graduations</div>' + recent.map((r) => {
-    const fresh = !radarFirst && !feedSeen.has(r.mint);
-    const why = r.status === "waiting" ? "passes checks · waiting for the dip" : r.status === "rec" || r.status === "watch" ? STATUS[r.status] : r.why;
-    return `<div class="frow${fresh ? " enter" : ""}" data-copy="${esc(r.mint)}"><span class="lg c-${r.status}"></span>
-      <span class="s">$${esc(r.sym)}<small>${usd(r.mcap_usd)}</small></span><span class="w">${esc(why)}</span><span class="t">${dur(r.grad_min)}</span></div>`;
-  }).join("") : '<div class="ftitle">No graduations in the last hours</div>';
-  recent.forEach((r) => feedSeen.add(r.mint));
   radarFirst = false;
 }
 
@@ -563,8 +672,8 @@ const CA_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 async function jumpTo(ca) {
   let d;
   try {
-    const r = await fetch("/api/coin?mint=" + encodeURIComponent(ca), { headers: { "X-Sweden-Token": token } });
-    if (r.status === 401) { dropToken(); return showLogin(); }
+    const r = await fetch("/api/coin?mint=" + encodeURIComponent(ca), { headers: AH() });
+    if (r.status === 401) return on401(r);
     d = await r.json();
   } catch (e) { return toast("No connection", false); }
   const ax = "https://axiom.trade/meme/" + (d.pool || ca) + "?chain=sol";
@@ -674,14 +783,177 @@ function handleAlerts() {
 
 function showLogin(msg) { $("#login").classList.add("show"); $("#loginmsg").textContent = msg || ""; $("#pk").focus(); }
 function dropToken() { token = null; try { localStorage.removeItem("swedenToken"); } catch (e) {} }
+function dropUser() { userToken = null; try { localStorage.removeItem("swedenUser"); } catch (e) {} }
+async function on401(r) {                                    // passkey missing / expired, or not logged in
+  let e = {}; try { e = await r.json(); } catch (x) {}
+  if (e.error === "login") { dropUser(); showAccount(); } else { dropToken(); showLogin("Please enter the passkey"); }
+}
+
+// ---------- account: log in / sign up / email code / new password ----------
+let amode = "login", aemail = "", apw = "";             // apw: only in memory, to send a new sign-up code
+const ATEXT = { login: ["Log in", ""], signup: ["Create account", "Your own filters, alerts and look. We send a code to your email."],
+                verify: ["Confirm", "Enter the 6-digit code we sent to "], forgot: ["Send code", "We send a code to reset your password."],
+                reset: ["Set new password", "Enter the code from the email and a new password."] };
+function showAccount(mode, msg, ok) {
+  if (mode) amode = mode;
+  $("#account").classList.add("show");
+  const [btn, hint] = ATEXT[amode];
+  $("#accsubmit").textContent = btn;
+  $("#acchint").textContent = amode === "verify" ? hint + aemail : hint;
+  $("#atabs").hidden = !["login", "signup"].includes(amode);
+  document.querySelectorAll("[data-amode]").forEach((b) => b.classList.toggle("on", b.dataset.amode === amode));
+  $("#acemail").hidden = amode === "verify" || amode === "reset";
+  $("#acpw").hidden = !["login", "signup", "reset"].includes(amode);
+  $("#acpw").placeholder = amode === "reset" ? "New password (at least 8 characters)" : amode === "signup" ? "Password (at least 8 characters)" : "Password";
+  $("#acpw").autocomplete = amode === "login" ? "current-password" : "new-password";
+  $("#accode").hidden = !["verify", "reset"].includes(amode);
+  $("#accforgot").hidden = amode !== "login";
+  $("#accresend").hidden = !["verify", "reset"].includes(amode);
+  $("#accback").hidden = ["login", "signup"].includes(amode);
+  $("#accmsg").textContent = msg || ""; $("#accmsg").classList.toggle("ok", !!ok);
+}
+async function accPost(path, body) {
+  const r = await fetch("/api/account/" + path, { method: "POST", headers: { "Content-Type": "application/json", ...AH() }, body: JSON.stringify(body) });
+  if (r.status === 401) { await on401(r); return null; }
+  return r.json();
+}
+function loggedIn(tok) {
+  userToken = tok; try { localStorage.setItem("swedenUser", tok); } catch (e) {}
+  $("#account").classList.remove("show"); $("#acpw").value = ""; $("#accode").value = ""; lastAlert = null; tick();
+}
+const codeSent = (j) => j.mailed === false ? "The mail could not be sent - ask the owner for the code." : "Code sent - check your email (and the spam folder).";
+$("#accform").onsubmit = async (e) => {
+  e.preventDefault();
+  const email = $("#acemail").value.trim(), pw = $("#acpw").value, code = $("#accode").value.trim();
+  if (email) aemail = email;
+  if (pw && (amode === "signup" || amode === "login")) apw = pw;
+  let j;
+  try {
+    if (amode === "login") j = await accPost("login", { email, password: pw });
+    else if (amode === "signup") j = await accPost("signup", { email, password: pw });
+    else if (amode === "verify") j = await accPost("verify", { email: aemail, code });
+    else if (amode === "forgot") j = await accPost("forgot", { email });
+    else j = await accPost("reset", { email: aemail, code, password: pw });
+  } catch (x) { return showAccount(null, "No connection to the terminal"); }
+  if (!j) return;
+  if (j.token) return loggedIn(j.token);
+  if (j.error) return showAccount(null, j.error);
+  if (j.step === "verify") return showAccount("verify", codeSent(j), j.mailed !== false);
+  if (j.step === "reset") return showAccount("reset", "If this email has an account, a code is on its way.", true);
+};
+document.querySelectorAll("[data-amode]").forEach((b) => b.onclick = () => showAccount(b.dataset.amode));
+$("#accforgot").onclick = () => showAccount("forgot");
+$("#accback").onclick = () => showAccount("login");
+$("#accresend").onclick = async () => {
+  if (amode === "verify" && !apw) return showAccount("login", "Log in again to get a new code");
+  const j = amode === "verify" ? await accPost("signup", { email: aemail, password: apw }) : await accPost("forgot", { email: aemail });
+  if (j) showAccount(null, j.error || "New code sent", !j.error);
+};
+
+// ---------- settings ----------
+const PCT = ["bundle_max", "top10_max", "sniper_max", "dev_max", "show_dd", "dd_min", "dd_max", "bounce", "pullback"];
+const FIELDS = [
+  ["Alerts", [["ntfy_topic", "ntfy topic", "text", "Your own topic in the ntfy app (letters, digits, - and _)"],
+              ["alert_new", "Alert: new coin to check", "bool"], ["alert_entry", "Alert: entry signal", "bool"]]],
+  ["Filter", [["max_age_h", "Max coin age", "num", "", "h"], ["max_mcap_usd", "Max market cap", "num", "", "$"],
+              ["bundle_max", "Max bundle", "num", "launch-slot buyers at graduation", "%"], ["top10_max", "Max top 10 holders", "num", "", "%"],
+              ["sniper_max", "Max snipers", "num", "", "%"], ["dev_max", "Dev holding limit", "num", "only colours the tile", "%"],
+              ["prior_max", "Max dev launches in 24 h", "num"], ["copy_check", "Hide copies of graduated coins", "bool"],
+              ["wash_check", "Hide wash trading / volume bots", "bool"], ["mayhem", "Show Mayhem coins", "bool"]]],
+  ["Dip pattern", [["show_dd", "Show a coin from", "num", "below its top", "%"], ["dd_min", "Zone starts at", "num", "below its top", "%"],
+                   ["dd_max", "Dead below", "num", "below its top", "%"], ["bounce", "Bounce off the low", "num", "", "%"],
+                   ["pullback", "Entry after a pullback of", "num", "", "%"]]],
+];
+const PRESETS = { "Axiom dark": ["#07080c", "#0f1117", "#e9ecf5", "#526fff"], Midnight: ["#060b18", "#0c1428", "#e6ecff", "#3b82f6"],
+                  Graphite: ["#111214", "#1a1c1f", "#ececec", "#22c55e"], Purple: ["#0b0712", "#140e20", "#efe9ff", "#a855f7"],
+                  Light: ["#f3f4f7", "#ffffff", "#15171c", "#3b5bff"] };
+const MODES = [["radar", "Radar", "dots on rings, sweep"], ["pulse", "Live feed", "big list of graduations"],
+               ["grid", "Heat grid", "one tile per coin"], ["off", "Off", "nothing, just the cards"]];
+let draft = null, styleKey = "";
+function applyStyle(st) {
+  const k = [st.bg, st.panel, st.text, st.accent].join();
+  if (k === styleKey) return; styleKey = k;
+  const r = document.documentElement.style;
+  r.setProperty("--bg", st.bg); r.setProperty("--panel", st.panel); r.setProperty("--text", st.text); r.setProperty("--blue", st.accent);
+  document.querySelector('meta[name="theme-color"]').content = st.bg;
+}
+function settingsHtml(st) {
+  const row = ([k, label, type, help, unit]) => {
+    const v = st[k], id = "s_" + k;
+    const input = type === "bool" ? `<input type="checkbox" id="${id}" ${v ? "checked" : ""}>` :
+      type === "text" ? `<input type="text" id="${id}" value="${esc(v)}" autocomplete="off" spellcheck="false">` :
+      `<input type="number" id="${id}" step="any" value="${PCT.includes(k) ? +(v * 100).toFixed(2) : v}">`;
+    return `<div class="row"><label for="${id}">${label}${help ? `<small>${help}</small>` : ""}</label>${input}${unit ? `<span class="unit">${unit}</span>` : ""}</div>`;
+  };
+  return `<div class="sec"><h3>Account</h3><div class="row"><label>${esc(state.email)}</label><button class="iconbtn" id="slogout">Log out</button></div></div>` +
+    FIELDS.map(([t, rows]) => `<div class="sec"><h3>${t}</h3>${rows.map(row).join("")}</div>`).join("") +
+    `<div class="sec"><h3>Style</h3><div class="presets">${Object.entries(PRESETS).map(([n, c]) =>
+      `<button type="button" data-preset="${n}"><i style="background:${c[0]}"></i><i style="background:${c[3]}"></i>${n}</button>`).join("")}</div>` +
+    [["bg", "Background"], ["panel", "Cards"], ["text", "Text"], ["accent", "Accent"]].map(([k, l]) =>
+      `<div class="row"><label for="s_${k}">${l}</label><input type="color" id="s_${k}" value="${st[k]}"></div>`).join("") + `</div>` +
+    `<div class="sec"><h3>Empty screen</h3><div class="modes">${MODES.map(([k, l, d]) =>
+      `<button type="button" data-mode="${k}" class="${st.radar_mode === k ? "on" : ""}">${l}<small>${d}</small></button>`).join("")}</div></div>`;
+}
+function readSettings() {
+  const out = Object.assign({}, draft);
+  FIELDS.forEach(([, rows]) => rows.forEach(([k, , type]) => {
+    const el = $("#s_" + k); if (!el) return;
+    if (type === "bool") out[k] = el.checked;
+    else if (type === "text") out[k] = el.value.trim();
+    else if (el.value !== "") out[k] = PCT.includes(k) ? +el.value / 100 : +el.value;
+  }));
+  ["bg", "panel", "text", "accent"].forEach((k) => out[k] = $("#s_" + k).value);
+  return out;
+}
+function openSettings(st) {
+  if (!state) return;
+  draft = Object.assign({}, st && st.bg ? st : state.settings);
+  $("#sbody").innerHTML = settingsHtml(draft);
+  $("#settings").classList.add("show");
+  $("#slogout").onclick = () => { dropUser(); closeSettings(false); state = null; $("#grid").innerHTML = ""; $("#radar").hidden = true; showAccount("login"); };
+  $("#sbody").querySelectorAll('input[type=color]').forEach((el) => el.oninput = () => { draft = readSettings(); styleKey = ""; applyStyle(draft); });
+  $("#sbody").querySelectorAll("[data-preset]").forEach((b) => b.onclick = () => {
+    const [bg, panel, text, accent] = PRESETS[b.dataset.preset];
+    Object.assign(draft, readSettings(), { bg, panel, text, accent });
+    ["bg", "panel", "text", "accent"].forEach((k) => $("#s_" + k).value = draft[k]);
+    styleKey = ""; applyStyle(draft);
+  });
+  $("#sbody").querySelectorAll("[data-mode]").forEach((b) => b.onclick = () => {
+    draft = Object.assign(readSettings(), { radar_mode: b.dataset.mode });
+    $("#sbody").querySelectorAll("[data-mode]").forEach((x) => x.classList.toggle("on", x === b));
+  });
+}
+function closeSettings(restore = true) {
+  $("#settings").classList.remove("show");
+  if (restore && state) { styleKey = ""; applyStyle(state.settings); }   // preview not saved
+}
+$("#opensettings").onclick = openSettings;
+$("#settings").addEventListener("click", (e) => { if (e.target.closest("[data-close]")) closeSettings(); });
+$("#ssave").onclick = async () => {
+  const st = readSettings();
+  try {
+    const r = await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json", ...AH() }, body: JSON.stringify({ settings: st }) });
+    if (r.status === 401) return on401(r);
+    const j = await r.json();
+    state.settings = j.settings; styleKey = ""; applyStyle(j.settings);
+    closeSettings(false); toast("Settings saved"); tick();
+  } catch (e) { toast("Not saved", false); }
+};
+$("#sreset").onclick = () => {                              // the starting settings (your ntfy topic stays); Save to keep
+  if (!state) return;
+  openSettings(Object.assign({}, state.defaults, { ntfy_topic: readSettings().ntfy_topic }));
+  styleKey = ""; applyStyle(draft);
+};
 
 async function tick() {
   if (!token) return showLogin();
+  if (!userToken) return showAccount();
   const all = NEEDS_ALL.includes(tab);
   try {
-    const r = await fetch("/api/state" + (all ? "?all=1" : ""), { cache: "no-store", headers: { "X-Sweden-Token": token } });
-    if (r.status === 401) { dropToken(); return showLogin("Please enter the passkey"); }
+    const r = await fetch("/api/state" + (all ? "?all=1" : ""), { cache: "no-store", headers: AH() });
+    if (r.status === 401) return on401(r);
     state = await r.json();
+    if (!$("#settings").classList.contains("show")) applyStyle(state.settings);
     $("#dot").className = "dot" + (state.live ? " live" : "");
     const n = state.coins.filter((c) => c.visible && !c.user_hidden).length;
     $("#status").innerHTML = (state.live ? "live" : "loading history…") + ` · ${n} shown<span class="long"> · ${new Date().toLocaleTimeString()}</span>`;
@@ -711,7 +983,7 @@ function copyCA(t, btn) {
 }
 async function setPref(mint, action) {
   try {
-    const r = await fetch("/api/prefs", { method: "POST", headers: { "Content-Type": "application/json", "X-Sweden-Token": token },
+    const r = await fetch("/api/prefs", { method: "POST", headers: { "Content-Type": "application/json", ...AH() },
                                           body: JSON.stringify({ mint, action }) });
     if (!r.ok) throw 0;
     toast({ watch: "Added to watchlist", unwatch: "Removed from watchlist", hide: "Hidden - no more alerts for it", unhide: "Shown again" }[action]);
@@ -744,12 +1016,13 @@ $("#loginform").onsubmit = async (e) => {
     const j = await r.json();
     if (r.ok && j.token) {
       token = j.token; try { localStorage.setItem("swedenToken", token); } catch (e) {}
-      $("#pk").value = ""; $("#login").classList.remove("show"); tick();
+      $("#pk").value = ""; $("#login").classList.remove("show"); userToken ? tick() : showAccount("login");
     } else showLogin(j.error === "locked" ? `Too many wrong tries - wait ${j.wait} s` : "Wrong passkey" + (j.wait ? ` - locked for ${j.wait} s` : ""));
   } catch (e) { showLogin("No connection to the terminal"); }
 };
 $("#lock").innerHTML = ic("lock");
-$("#lock").onclick = () => { dropToken(); state = null; $("#grid").innerHTML = ""; $("#radar").hidden = true; $("#log").innerHTML = ""; $("#latest").classList.remove("show"); renderTabs(); showLogin(); };
+$("#opensettings").innerHTML = ic("gear");
+$("#lock").onclick = () => { dropToken(); dropUser(); state = null; radarMode = null; $("#grid").innerHTML = ""; $("#radar").hidden = true; $("#log").innerHTML = ""; $("#latest").classList.remove("show"); renderTabs(); showLogin(); };
 const soundLabel = () => { $("#sound").innerHTML = ic(soundOn ? "bell" : "belloff") + `<span>${soundOn ? "Sound on" : "Sound off"}</span>`; $("#sound").classList.toggle("on", soundOn); };
 $("#sound").onclick = () => {
   soundOn = !soundOn;
@@ -760,7 +1033,7 @@ $("#sound").onclick = () => {
 $("#testpush").innerHTML = ic("phone") + "<span>Test push</span>";
 $("#testpush").onclick = async () => {
   try {
-    const r = await fetch("/api/testpush", { method: "POST", headers: { "X-Sweden-Token": token } });
+    const r = await fetch("/api/testpush", { method: "POST", headers: AH() });
     const j = await r.json(); toast(j.msg || "failed", !!j.ok); tick();
   } catch (e) { toast("No connection", false); }
 };
@@ -779,7 +1052,7 @@ $("#axform").onsubmit = async (e) => {
   e.preventDefault();
   const values = {}; new FormData(e.target).forEach((v, k) => { v = String(v).replace(",", ".").replace("%", "").trim(); if (v) values[k] = v; });
   try {
-    const r = await fetch("/api/axiom", { method: "POST", headers: { "Content-Type": "application/json", "X-Sweden-Token": token },
+    const r = await fetch("/api/axiom", { method: "POST", headers: { "Content-Type": "application/json", ...AH() },
                                           body: JSON.stringify({ mint: axMint, values }) });
     toast(r.ok ? "Saved - thanks" : "Not saved (empty or coin gone)", r.ok);
   } catch (err) { toast("No connection", false); }

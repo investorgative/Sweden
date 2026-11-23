@@ -18,18 +18,24 @@ collector); data is at most ~5 s old (the collector flushes every 5 s).
 
 Run:  ./terminal.sh   (terminal on port 8750 + a Cloudflare quick tunnel, so it opens from anywhere over HTTPS)
       or python3 sweden/terminal.py [--port 8750] [--max-mcap-usd 100000] [--show-dd 0.1] ...
-Env:  SWEDEN_NTFY_TOPIC   push alerts to https://ntfy.sh/<topic> (install the ntfy app, subscribe to the topic)
+Env:  SWEDEN_NTFY_TOPIC   ntfy topic of the owner account (taken over by the first account that signs up)
       SWEDEN_PASSKEY      the passkey for the page; else the file ./terminal_passkey (generated on first start)
+
+Accounts (accounts.py): after the passkey every user logs in or signs up (email code + password). Filter, dip pattern,
+watchlist / hidden coins, alerts (own ntfy topic) and style are per user; the command-line options are the defaults
+for new accounts (and the owner's settings, which match the research replay). The new link after a restart is pushed
+to every user's ntfy topic.
 
 Access: the page holds no data; /api/state needs a token that only the passkey hands out (checked here, on the Pi).
 A token is signed with the passkey and valid for TOKEN_DAYS, so restarts keep you logged in and changing the
 passkey logs every browser out. Wrong passkeys lock the address out for longer and longer.
 """
-import argparse, collections, glob, hashlib, hmac, json, os, queue, secrets, sys, threading, time, urllib.parse
+import argparse, collections, glob, hashlib, hmac, json, os, queue, re, secrets, sys, threading, time, urllib.parse
 import urllib.request, zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 sys.path.insert(0, os.path.dirname(__file__))
+import accounts as A
 import replay as R
 from grad_replay import SKIP, WSOL, sol_usd
 
@@ -38,6 +44,9 @@ HISTORY_S = 72 * 3600                    # creator history (24 h) and copied nam
 AXIOM_FILE = os.path.join(R.DATA, "axiom_checks.jsonl")
 PREFS_FILE = os.path.join(R.DATA, "terminal_prefs.json")
 PASSKEY_FILE = os.path.join(HERE, "..", "terminal_passkey")
+BREVO_FILE = os.path.join(HERE, "..", "brevo.json")
+TUNNEL_LOG = os.path.join(HERE, "..", "logs", "tunnel.log")
+LAST_LINK = os.path.join(R.DATA, "last_link.txt")
 TOKEN_DAYS = 30
 COPY_MATCHES = 6                         # earlier same-name coins kept per copied coin
 AXIOM_FIELDS = ("top10", "dev", "snipers", "insiders", "bundlers", "holders")
@@ -167,6 +176,19 @@ class Holders:
         )
 
 
+class Stage:
+    """One user's view of a coin's dip pattern (the dip settings are per user)."""
+    __slots__ = ("low", "hi", "mode", "stage", "armed", "seen", "entries", "fresh")
+
+    def __init__(self, fresh):
+        self.low = self.hi = None
+        self.mode, self.stage = "top", "top"
+        self.armed = True                           # an entry alert needs a new low (or top) since the last one
+        self.seen = False                           # the "new coin" alert was sent (or the coin was already shown)
+        self.entries = 0
+        self.fresh = fresh                          # created while live: first update only sets `seen`, no alert
+
+
 class Coin:
     def __init__(self, r, prior, copy):
         _, _, _, ts, mint, creator, signer, name, sym, uri, vsol, vtok, quote, flag = r[:14]
@@ -176,18 +198,16 @@ class Coin:
                       prior_launches=prior, copy=copy)
         self.S = R.State(self.c)
         self.H = Holders(r[0], {creator, signer})
-        self.feat, self.fails = None, None
+        self.feat = None                            # on-chain checks at graduation (None = not run yet)
         self.grad_ts, self.pool_ok = None, False
         self.pts = {}                               # 5-s bucket -> [slot of close, close, high, low] after graduation
         self.last_slot = 0
-        self.peak = 0.0; self.low = self.hi = None; self.mode = "top"; self.stage = "top"
+        self.peak = 0.0
+        self.ust = {}                               # user id -> Stage
         self.price = None
         self.meta = None
         self.pool = None
         self.copy_of = []                           # (mint, launch ts, why) of earlier graduated coins it copies
-        self.seen_visible = False
-        self.entries = 0
-        self.entry_armed = True                     # an entry alert needs a new low (or top) since the last one
         self.last_trade = None
 
 
@@ -218,12 +238,26 @@ def fetch_json(url):
                                                                                  "Accept": "application/json"}), timeout=8))
 
 
-def status(c, vis, why, prefs):
+def fails_for(c, s):
+    """Failed on-chain checks under one user's settings (None = checks not run yet)."""
+    if c.feat is None:
+        return None
+    F = dict(R.FILTER, bundle_pct=s["bundle_max"], top10_pct=s["top10_max"], sniper_pct=s["sniper_max"],
+             dev_pct=s["dev_max"], max_prior_launches=s["prior_max"])
+    off = set(SKIP)
+    if not s["copy_check"]:
+        off.add("copy of earlier coin")
+    if not s["wash_check"]:
+        off |= {"wash: top3 wallets", "wash: same sizes"}
+    return [x for x in R.failed(c.feat, F) if x not in off]
+
+
+def status(c, vis, why, u):
     """One word for the radar: rec / watch / waiting (passes, not dipped yet) / filtered / mayhem / dead / hidden."""
-    if c.mint in prefs.get("hide"):
+    if c.mint in u["hide"]:
         return "hidden"
     if vis:
-        return "watch" if c.mint in prefs.get("watch") else "rec"
+        return "watch" if c.mint in u["watch"] else "rec"
     if why.startswith("not yet"):
         return "waiting"
     if why.startswith("Mayhem"):
@@ -233,12 +267,12 @@ def status(c, vis, why, prefs):
     return "filtered"
 
 
-def short_why(c, why):
+def short_why(c, why, fails):
     """The hide reason in a few words, with the failing number where we have it."""
     if not why.startswith("filter: "):
         return why.split(" (")[0]
     f, out = c.feat or {}, []
-    for r in c.fails or []:
+    for r in fails or []:
         v = {"bundle": "bundle_pct", "snipers": "sniper_pct", "top10 concentration": "top10_pct",
              "dev holds too much": "dev_pct"}.get(r)
         if r == "copy of earlier coin" and c.copy_of:
@@ -247,35 +281,10 @@ def short_why(c, why):
     return ", ".join(out)
 
 
-class Prefs:
-    """Watchlist and coins hidden by the user, kept on the Pi (data/terminal_prefs.json) so phone and PC share them."""
-
-    def __init__(self):
-        try:
-            d = json.load(open(PREFS_FILE))
-        except (OSError, ValueError):
-            d = {}
-        self.sets = {k: set(d.get(k, [])) for k in ("watch", "hide")}
-
-    def get(self, k):
-        return self.sets[k]
-
-    def change(self, mint, action):
-        k, on = {"watch": ("watch", True), "unwatch": ("watch", False),
-                 "hide": ("hide", True), "unhide": ("hide", False)}[action]
-        (self.sets[k].add if on else self.sets[k].discard)(mint)
-        if action == "hide":
-            self.sets["watch"].discard(mint)
-        tmp = PREFS_FILE + ".tmp"
-        with open(tmp, "w") as f:
-            json.dump({k: sorted(v) for k, v in self.sets.items()}, f)
-        os.replace(tmp, PREFS_FILE)
-
-
 class Terminal:
-    def __init__(self, a):
+    def __init__(self, a, acc):
         self.a = a
-        self.prefs = Prefs()
+        self.acc = acc
         self.orig_cache = {}
         self.coins = {}
         self.creators = collections.defaultdict(list)
@@ -283,7 +292,7 @@ class Terminal:
         self.graduated = {}                     # mint -> graduation ts, every coin in the data
         self.tails = {}
         self.lock = threading.Lock()
-        self.alerts = collections.deque(maxlen=200)
+        self.alerts = collections.defaultdict(lambda: collections.deque(maxlen=200))   # user id -> alerts
         self.alert_id = 0
         self.live = False
         self.usd = sol_usd() or 0.0
@@ -340,7 +349,6 @@ class Terminal:
         elif kind == "G":
             if c.S is not None:
                 c.feat = c.S.features()
-                c.fails = [x for x in R.failed(c.feat, dict(R.FILTER, bundle_pct=self.a.bundle_max)) if x not in SKIP]
                 c.S = None                          # free the per-wallet state
             c.grad_ts = r[3]
         elif kind == "P":
@@ -350,7 +358,6 @@ class Terminal:
             c.grad_ts = c.grad_ts or r[3]
             if c.S is not None:                     # graduation event missed by the feed: run the checks now
                 c.feat = c.S.features()
-                c.fails = [x for x in R.failed(c.feat, dict(R.FILTER, bundle_pct=self.a.bundle_max)) if x not in SKIP]
                 c.S = None
             if c.pool_ok:
                 self.meta_q.put(c)
@@ -363,7 +370,6 @@ class Terminal:
                 self.price_update(c, Q / B, r[3], r[0])
 
     def price_update(self, c, p, ts, slot):
-        a = self.a
         b = c.pts.get(ts // 5)                          # swaps arrive over several connections, not in order
         if b is None:
             c.pts[ts // 5] = [slot, p, p, p]
@@ -374,33 +380,46 @@ class Terminal:
         if slot < c.last_slot:                          # older than what we already have: chart only
             return
         c.last_slot, c.price, c.last_trade = slot, p, ts
-        if p > c.peak:
-            c.peak, c.low, c.hi, c.mode, c.entry_armed = p, None, None, "top", True
+        new_top = p > c.peak
+        if new_top:
+            c.peak = p
         dd = 1 - p / c.peak
-        old = c.stage
-        if dd > a.dd_max:
-            c.stage = "dead"
-        elif c.mode in ("top", "drop"):
-            if dd >= a.dd_min:
-                c.low = p if c.low is None else min(c.low, p)
-                c.mode, c.stage = "drop", "zone"
-                if p >= c.low * (1 + a.bounce):
-                    c.mode, c.stage, c.hi = "bounce", "bounce", p
+        for uid, u in self.acc.users().items():
+            s = u["settings"]
+            st = c.ust.get(uid)
+            if st is None:
+                st = c.ust[uid] = Stage(fresh=self.live)
+            if new_top:
+                st.low, st.hi, st.mode, st.armed = None, None, "top", True
+            old = st.stage
+            if dd > s["dd_max"]:
+                st.stage = "dead"
+            elif st.mode in ("top", "drop"):
+                if dd >= s["dd_min"]:
+                    st.low = p if st.low is None else min(st.low, p)
+                    st.mode, st.stage = "drop", "zone"
+                    if p >= st.low * (1 + s["bounce"]):
+                        st.mode, st.stage, st.hi = "bounce", "bounce", p
+                else:
+                    st.stage = "dip" if dd >= s["show_dd"] else "top"
             else:
-                c.stage = "dip" if dd >= a.show_dd else "top"
-        else:
-            if p < c.low:
-                c.low, c.mode, c.stage, c.entry_armed = p, "drop", "zone", True
-            else:
-                c.hi = max(c.hi, p)
-                c.stage = "entry" if p <= c.hi * (1 - a.pullback) else "bounce"
-        vis = self.visible(c)[0]
-        if vis and not c.seen_visible:
-            c.seen_visible = True
-            self.alert(c, "new", f"{c.sym} is {dd:.0%} below its top - check the meme")
-        if vis and c.stage == "entry" and old != "entry" and c.entry_armed:
-            c.entries, c.entry_armed = c.entries + 1, False
-            self.alert(c, "entry", f"{c.sym}: ENTRY - bounced and pulled back {self.mcap_text(c)}")
+                if p < st.low:
+                    st.low, st.mode, st.stage, st.armed = p, "drop", "zone", True
+                else:
+                    st.hi = max(st.hi, p)
+                    st.stage = "entry" if p <= st.hi * (1 - s["pullback"]) else "bounce"
+            vis = self.visible(c, uid)[0]
+            if st.fresh:                                # account / settings new while live: no alert storm
+                st.seen, st.fresh = vis, False
+                continue
+            if vis and not st.seen:
+                st.seen = True
+                if s["alert_new"]:
+                    self.alert(c, uid, "new", f"{c.sym} is {dd:.0%} below its top - check the meme")
+            if vis and st.stage == "entry" and old != "entry" and st.armed:
+                st.entries, st.armed = st.entries + 1, False
+                if s["alert_entry"]:
+                    self.alert(c, uid, "entry", f"{c.sym}: ENTRY - bounced and pulled back {self.mcap_text(c)}")
 
     def mcap_usd(self, c):
         return (c.price or 0) * 1e6 * self.usd
@@ -409,38 +428,44 @@ class Terminal:
         m = self.mcap_usd(c)
         return f"(mcap ${m / 1000:.0f}k)" if m else ""
 
-    def visible(self, c):
-        """(shown?, reason it is hidden)."""
+    def visible(self, c, uid):
+        """(shown?, reason it is hidden) for one user."""
+        u = self.acc.users().get(uid)
+        if u is None:
+            return False, "no account"
+        s = u["settings"]
         if c.grad_ts is None or not c.pool_ok or c.price is None:
             return False, "not graduated"
-        if c.mint in self.prefs.get("hide"):
+        if c.mint in u["hide"]:
             return False, "hidden by you"
-        if c.mint in self.prefs.get("watch"):
+        if c.mint in u["watch"]:
             return True, ""
-        if time.time() - c.ts > self.a.max_age:
+        if time.time() - c.ts > s["max_age_h"] * 3600:
             return False, "older than max age"
-        if c.flag and not self.a.mayhem:
-            return False, "Mayhem coin (pool of a few SOL, start with --mayhem to show)"
-        if c.fails is None:
+        if c.flag and not s["mayhem"]:
+            return False, "Mayhem coin (pool of a few SOL, can be switched on in the settings)"
+        fails = fails_for(c, s)
+        if fails is None:
             return False, "on-chain checks missing"
-        if c.fails:
-            return False, "filter: " + ", ".join(c.fails)
-        if self.usd and self.mcap_usd(c) > self.a.max_mcap_usd:
+        if fails:
+            return False, "filter: " + ", ".join(fails)
+        if self.usd and self.mcap_usd(c) > s["max_mcap_usd"]:
             return False, "market cap above limit"
-        if c.stage == "top":
-            return False, "not yet 10 % below its top"
-        if c.stage == "dead":
-            return False, f"dead (more than {self.a.dd_max:.0%} below its top)"
+        stage = c.ust[uid].stage if uid in c.ust else "top"
+        if stage == "top":
+            return False, f"not yet {s['show_dd']:.0%} below its top"
+        if stage == "dead":
+            return False, f"dead (more than {s['dd_max']:.0%} below its top)"
         return True, ""
 
     # ---------- alerts ----------
-    def alert(self, c, kind, text):
+    def alert(self, c, uid, kind, text):
         if not self.live:
             return
         self.alert_id += 1
-        self.alerts.append(dict(id=self.alert_id, kind=kind, mint=c.mint, text=text, ts=time.time()))
-        log("ALERT", kind, c.mint, text)
-        topic = os.environ.get("SWEDEN_NTFY_TOPIC")
+        self.alerts[uid].append(dict(id=self.alert_id, kind=kind, mint=c.mint, text=text, ts=time.time()))
+        log("ALERT", f"user {uid}", kind, c.mint, text)
+        topic = self.acc.users()[uid]["settings"]["ntfy_topic"]
         if topic:
             threading.Thread(target=self.push, args=(topic, kind, c, text), daemon=True).start()
 
@@ -459,16 +484,39 @@ class Terminal:
             log("ntfy failed:", repr(e))
             return False
 
-    def test_push(self):
-        """(sent?, message) - a test notification from the page's button."""
-        with self.lock:                             # a test alert: every open page flashes and beeps
+    def test_push(self, uid):
+        """(sent?, message) - a test alert for one user: their open pages flash, their phone gets a push."""
+        with self.lock:
             self.alert_id += 1
-            self.alerts.append(dict(id=self.alert_id, kind="test", mint="", text="Test alert", ts=time.time()))
-        topic = os.environ.get("SWEDEN_NTFY_TOPIC")
+            self.alerts[uid].append(dict(id=self.alert_id, kind="test", mint="", text="Test alert", ts=time.time()))
+        topic = self.acc.users()[uid]["settings"]["ntfy_topic"]
         if not topic:
-            return False, "test alert shown - push is off (start with SWEDEN_NTFY_TOPIC=<topic> ./terminal.sh)"
+            return False, "test alert shown - no ntfy topic set (Settings > Alerts)"
         ok = self.push(topic, "test", None, "Test from the Sweden terminal - push works")
         return ok, "test alert + push sent - check your phone" if ok else "push failed (see logs/terminal.log)"
+
+    def link_worker(self):
+        """The Cloudflare link changes on every tunnel start: push a new one to every user's ntfy topic."""
+        env_topic = os.environ.get("SWEDEN_NTFY_TOPIC", "")
+        while True:
+            try:
+                urls = re.findall(r"https://[a-z0-9-]+\.trycloudflare\.com", open(TUNNEL_LOG, errors="ignore").read())
+                last = open(LAST_LINK).read().strip() if os.path.exists(LAST_LINK) else ""
+                if urls and urls[-1] != last:
+                    url = urls[-1]
+                    topics = {u["settings"]["ntfy_topic"] for u in self.acc.users().values()} | {env_topic}
+                    for tp in sorted(x for x in topics if x):
+                        try:
+                            urllib.request.urlopen(urllib.request.Request(
+                                f"https://ntfy.sh/{urllib.parse.quote(tp)}", data=f"New link: {url}".encode(),
+                                headers={"Title": "Sweden terminal started", "Click": url}), timeout=10).read()
+                        except Exception as e:
+                            log("ntfy (link) failed:", repr(e))
+                    open(LAST_LINK, "w").write(url)
+                    log("new link pushed:", url)
+            except OSError:
+                pass
+            time.sleep(20)
 
     # ---------- background ----------
     def meta_worker(self):
@@ -496,8 +544,9 @@ class Terminal:
         with self.lock:
             self.live = True
             for c in self.coins.values():         # coins already showing at start: no alert storm
-                if self.visible(c)[0]:
-                    c.seen_visible = True
+                for uid in self.acc.users():
+                    if uid in c.ust and self.visible(c, uid)[0]:
+                        c.ust[uid].seen = True
         log(f"live: {self.events} events read, {sum(1 for c in self.coins.values() if c.grad_ts)} graduated coins "
             f"in the window, SOL ${self.usd:.0f}")
         last_prune = time.time()
@@ -519,7 +568,7 @@ class Terminal:
                     self.tails = {f: t for f, t in self.tails.items() if os.path.exists(f)}
 
     # ---------- API ----------
-    def lookup(self, mint):
+    def lookup(self, mint, uid):
         """Where a pasted CA stands: which tab shows it and why, or why it is not shown at all."""
         now = time.time()
         with self.lock:
@@ -533,14 +582,16 @@ class Terminal:
                 mc = st.vsol / st.vtok * 1e6 * self.usd if st is not None and st.vtok else None
                 return dict(base, tab=None, text="Still on the bonding curve (not graduated)"
                             + (f" · mcap {usd_text(mc)}" if mc else ""))
-            vis, why = self.visible(c)
-            if c.mint in self.prefs.get("hide"):
+            u = self.acc.users()[uid]
+            vis, why = self.visible(c, uid)
+            stage = c.ust[uid].stage if uid in c.ust else "top"
+            if c.mint in u["hide"]:
                 return dict(base, tab="hidden", text="Hidden by you")
             if vis:
-                return dict(base, tab="watch" if c.mint in self.prefs.get("watch") else "all",
-                            text=("On your watchlist · " if c.mint in self.prefs.get("watch") else "Recommended · ")
-                            + {"entry": "ENTRY", "bounce": "bounce", "zone": "in the zone", "dip": "dip"}.get(c.stage, c.stage))
-            return dict(base, tab="filtered", text="Filtered out: " + short_why(c, why))
+                return dict(base, tab="watch" if c.mint in u["watch"] else "all",
+                            text=("On your watchlist · " if c.mint in u["watch"] else "Recommended · ")
+                            + {"entry": "ENTRY", "bounce": "bounce", "zone": "in the zone", "dip": "dip"}.get(stage, stage))
+            return dict(base, tab="filtered", text="Filtered out: " + short_why(c, why, fails_for(c, u["settings"])))
 
     def original(self, mint):
         """Earlier coins with the same name / ticker as a copied coin: mcap, 24 h volume, liquidity (DexScreener, free)
@@ -597,59 +648,62 @@ class Terminal:
         log("axiom check saved", c.sym, vals)
         return True
 
-    def state(self, show_all):
+    def state(self, uid, show_all):
         now = time.time()
+        u = self.acc.users()[uid]
+        s = u["settings"]
         out, counts, radar = [], {"filtered": 0, "hidden": 0, "waiting": 0}, []
         with self.lock:
             for c in self.coins.values():
                 if c.grad_ts is None or not c.pool_ok or c.price is None:
                     continue
-                vis, why = self.visible(c)
-                if c.mint in self.prefs.get("hide"):
+                vis, why = self.visible(c, uid)
+                fails = fails_for(c, s)
+                st = c.ust.get(uid)
+                if c.mint in u["hide"]:
                     counts["hidden"] += 1
                 elif not vis:
                     counts["filtered"] += 1
                     if why.startswith("not yet"):
                         counts["waiting"] += 1
                 radar.append(dict(mint=c.mint, sym=c.sym, grad_min=(now - c.grad_ts) / 60, mcap_usd=self.mcap_usd(c),
-                                  status=status(c, vis, why, self.prefs), why=short_why(c, why)))
+                                  status=status(c, vis, why, u), why=short_why(c, why, fails)))
                 if not vis and not show_all:
                     continue
                 f = c.feat or {}
+                low = st.low if st else None
                 out.append(dict(
-                    mint=c.mint, pool=c.pool, name=c.name, sym=c.sym, stage=c.stage, visible=vis, hidden=why,
-                    watched=c.mint in self.prefs.get("watch"), user_hidden=c.mint in self.prefs.get("hide"),
+                    mint=c.mint, pool=c.pool, name=c.name, sym=c.sym, stage=st.stage if st else "top", visible=vis,
+                    hidden=why, watched=c.mint in u["watch"], user_hidden=c.mint in u["hide"],
                     copy_of=len(c.copy_of),
                     mayhem=bool(c.flag), age_min=(now - c.ts) / 60, grad_min=(now - c.grad_ts) / 60,
                     mcap_usd=self.mcap_usd(c), mcap_sol=c.price * 1e6,
-                    dd=1 - c.price / c.peak, from_low=(c.price / c.low - 1) if c.low else None,
-                    last_trade_s=now - c.last_trade if c.last_trade else None, entries=c.entries,
-                    pts=chart(c, now), peak=c.peak * 1e6,
-                    low=c.low * 1e6 if c.low else None,
+                    dd=1 - c.price / c.peak, from_low=(c.price / low - 1) if low else None,
+                    last_trade_s=now - c.last_trade if c.last_trade else None, entries=st.entries if st else 0,
+                    pts=chart(c, now), peak=c.peak * 1e6, low=low * 1e6 if low else None,
                     checks=dict(top10=f.get("top10_pct"), bundle=f.get("bundle_pct"), snipers=f.get("sniper_pct"),
                                 top3_trades=f.get("top3_trade_share"), same_sizes=f.get("same_size_share"),
                                 prior=f.get("prior_launches"), copy=f.get("copy"), dev_sold=f.get("dev_sold"),
                                 traders=f.get("traders")),
                     live=c.H.metrics(), meta=c.meta or {}))
-            alerts = list(self.alerts)
+            alerts = list(self.alerts[uid])
         return dict(now=now, live=self.live, sol_usd=self.usd, coins=out, alerts=alerts, all=show_all, counts=counts,
-                    radar=sorted(radar, key=lambda r: r["grad_min"]),
-                    settings=dict(max_age_h=self.a.max_age / 3600, max_mcap_usd=self.a.max_mcap_usd, bundle_max=self.a.bundle_max,
-                                  top10_max=R.FILTER["top10_pct"], sniper_max=R.FILTER["sniper_pct"],
-                                  dev_max=R.FILTER["dev_pct"], prior_max=R.FILTER["max_prior_launches"],
-                                  show_dd=self.a.show_dd, dd_min=self.a.dd_min, dd_max=self.a.dd_max,
-                                  bounce=self.a.bounce, pullback=self.a.pullback))
+                    radar=sorted(radar, key=lambda r: r["grad_min"]), email=u["email"], settings=s,
+                    defaults=self.acc.defaults)
 
 
 def serve(t, port):
     page = os.path.join(HERE, "terminal.html")
     gate = Gate()
+    acc = t.acc
 
     class H(BaseHTTPRequestHandler):
         def log_message(self, *a):
             pass
 
-        def send(self, code, body, ctype):
+        def send(self, code, body, ctype="application/json"):
+            if not isinstance(body, bytes):
+                body = json.dumps(body).encode()
             self.send_response(code)
             self.send_header("Content-Type", ctype)
             self.send_header("Cache-Control", "no-store")
@@ -665,65 +719,97 @@ def serve(t, port):
                 return self.headers.get("CF-Connecting-IP") or peer
             return peer
 
+        def auth(self, user=True):
+            """Passkey token (and with `user` a login token); False = already answered with 401."""
+            if not gate.token_ok(self.headers.get("X-Sweden-Token")):
+                self.send(401, {"error": "locked"})
+                return False
+            if not user:
+                return True
+            uid = acc.user_from_token(self.headers.get("X-Sweden-User"))
+            if uid is None or uid not in acc.users():
+                self.send(401, {"error": "login"})
+                return False
+            return uid
+
+        def body(self, limit=4000):
+            n = int(self.headers.get("Content-Length") or 0)
+            try:
+                b = json.loads(self.rfile.read(min(n, limit)) or b"{}")
+                return b if isinstance(b, dict) else {}
+            except ValueError:
+                return {}
+
         def do_GET(self):
             u = urllib.parse.urlparse(self.path)
+            q = urllib.parse.parse_qs(u.query)
             if u.path == "/":
-                self.send(200, open(page, "rb").read(), "text/html; charset=utf-8")
-            elif u.path == "/api/coin":
-                if not gate.token_ok(self.headers.get("X-Sweden-Token")):
-                    return self.send(401, b'{"error":"locked"}', "application/json")
-                m = urllib.parse.parse_qs(u.query).get("mint", [""])[0][:64]
-                self.send(200, json.dumps(t.lookup(m)).encode(), "application/json")
+                return self.send(200, open(page, "rb").read(), "text/html; charset=utf-8")
+            if not u.path.startswith("/api/"):
+                return self.send(404, b"not found", "text/plain")
+            uid = self.auth()
+            if uid is False:
+                return
+            m = q.get("mint", [""])[0][:64]
+            if u.path == "/api/coin":
+                self.send(200, t.lookup(m, uid))
             elif u.path == "/api/original":
-                if not gate.token_ok(self.headers.get("X-Sweden-Token")):
-                    return self.send(401, b'{"error":"locked"}', "application/json")
-                m = urllib.parse.parse_qs(u.query).get("mint", [""])[0][:64]
-                self.send(200, json.dumps(t.original(m)).encode(), "application/json")
+                self.send(200, t.original(m))
             elif u.path == "/api/state":
-                if not gate.token_ok(self.headers.get("X-Sweden-Token")):
-                    return self.send(401, b'{"error":"locked"}', "application/json")
-                show_all = urllib.parse.parse_qs(u.query).get("all") == ["1"]
-                self.send(200, json.dumps(t.state(show_all)).encode(), "application/json")
+                self.send(200, t.state(uid, q.get("all") == ["1"]))
             else:
-                self.send(404, b"not found", "text/plain")
+                self.send(404, {"error": "not found"})
 
         def do_POST(self):
-            if self.path not in ("/api/login", "/api/axiom", "/api/prefs", "/api/testpush"):
-                return self.send(404, b"not found", "text/plain")
-            n = int(self.headers.get("Content-Length") or 0)
-            if self.path == "/api/testpush":
-                if not gate.token_ok(self.headers.get("X-Sweden-Token")):
-                    return self.send(401, b'{"error":"locked"}', "application/json")
-                ok, msg = t.test_push()
-                return self.send(200, json.dumps(dict(ok=ok, msg=msg)).encode(), "application/json")
-            if self.path == "/api/prefs":
-                if not gate.token_ok(self.headers.get("X-Sweden-Token")):
-                    return self.send(401, b'{"error":"locked"}', "application/json")
+            p = self.path
+            if p == "/api/login":                      # the shared passkey
+                code, out = gate.login(self.ip(), str(self.body(1000).get("passkey", "")).strip())
+                return self.send(code, out)
+            if p.startswith("/api/account/"):            # sign-up / login / codes: passkey only
+                if not self.auth(user=False):
+                    return
+                b, ip = self.body(), self.ip()
+                act = p.rsplit("/", 1)[1]
+                if act == "signup":
+                    code, out = acc.signup(ip, b.get("email"), b.get("password"))
+                elif act == "verify":
+                    code, out = acc.verify(ip, b.get("email"), b.get("code"))
+                elif act == "login":
+                    code, out = acc.login(ip, b.get("email"), b.get("password"))
+                elif act == "forgot":
+                    code, out = acc.forgot(ip, b.get("email"))
+                elif act == "reset":
+                    code, out = acc.reset(ip, b.get("email"), b.get("code"), b.get("password"))
+                else:
+                    code, out = 404, {"error": "not found"}
+                return self.send(code, out)
+            uid = self.auth()
+            if uid is False:
+                return
+            b = self.body()
+            if p == "/api/settings":
+                st = acc.save_settings(uid, b.get("settings"))
+                with t.lock:                             # new dip settings: restart this user's stages quietly
+                    for c in t.coins.values():
+                        c.ust.pop(uid, None)
+                return self.send(200, {"ok": True, "settings": st})
+            if p == "/api/testpush":
+                ok, msg = t.test_push(uid)
+                return self.send(200, {"ok": ok, "msg": msg})
+            if p == "/api/prefs":
                 try:
-                    b = json.loads(self.rfile.read(min(n, 1000)))
-                    with t.lock:
-                        t.prefs.change(str(b["mint"])[:64], b["action"])
-                    ok = True
-                except (ValueError, KeyError, TypeError, AttributeError):
-                    ok = False
-                return self.send(200 if ok else 400, json.dumps(dict(ok=ok)).encode(), "application/json")
-            if self.path == "/api/axiom":
-                if not gate.token_ok(self.headers.get("X-Sweden-Token")):
-                    return self.send(401, b'{"error":"locked"}', "application/json")
+                    acc.change_pref(uid, str(b["mint"])[:64], b["action"])
+                    return self.send(200, {"ok": True})
+                except (KeyError, TypeError):
+                    return self.send(400, {"ok": False})
+            if p == "/api/axiom":
                 try:
-                    b = json.loads(self.rfile.read(min(n, 4000)))
-                    vals = {k: float(v) for k, v in b["values"].items()
-                            if k in AXIOM_FIELDS and v not in ("", None)}
+                    vals = {k: float(v) for k, v in b["values"].items() if k in AXIOM_FIELDS and v not in ("", None)}
                     ok = bool(vals) and t.axiom_check(str(b["mint"]), vals)
                 except (ValueError, KeyError, TypeError, AttributeError):
                     ok = False
-                return self.send(200 if ok else 400, json.dumps(dict(ok=ok)).encode(), "application/json")
-            try:
-                guess = str(json.loads(self.rfile.read(min(n, 1000)) or b"{}").get("passkey", ""))
-            except (ValueError, AttributeError):
-                guess = ""
-            code, out = gate.login(self.ip(), guess.strip())
-            self.send(code, json.dumps(out).encode(), "application/json")
+                return self.send(200 if ok else 400, {"ok": ok})
+            self.send(404, {"error": "not found"})
 
     ThreadingHTTPServer(("0.0.0.0", port), H).serve_forever()
 
@@ -742,10 +828,20 @@ def main():
                     help="hide a coin if launch-slot buyers still held more than this share at graduation")
     ap.add_argument("--mayhem", action="store_true", help="also show Mayhem coins (they graduate into tiny pools)")
     a = ap.parse_args()
-    t = Terminal(a)
-    for target in (t.loop, t.meta_worker, t.price_worker):
+    defaults = dict(              # new accounts start here; the owner's settings = the research replay's filter
+        max_age_h=a.max_age / 3600, max_mcap_usd=a.max_mcap_usd, bundle_max=a.bundle_max,
+        top10_max=R.FILTER["top10_pct"], sniper_max=R.FILTER["sniper_pct"], dev_max=R.FILTER["dev_pct"],
+        prior_max=R.FILTER["max_prior_launches"], copy_check=True, wash_check=True, mayhem=a.mayhem,
+        show_dd=a.show_dd, dd_min=a.dd_min, dd_max=a.dd_max, bounce=a.bounce, pullback=a.pullback,
+        alert_new=True, alert_entry=True, ntfy_topic="",
+        bg="#07080c", panel="#0f1117", text="#e9ecf5", accent="#526fff", radar_mode="radar")
+    acc = A.Accounts(os.path.join(R.DATA, "users.db"), os.path.join(R.DATA, "secret.key"), BREVO_FILE, defaults,
+                     prefs_file=PREFS_FILE, owner_topic=os.environ.get("SWEDEN_NTFY_TOPIC", ""))
+    t = Terminal(a, acc)
+    for target in (t.loop, t.meta_worker, t.price_worker, t.link_worker):
         threading.Thread(target=target, daemon=True).start()
-    log(f"SWEDEN terminal on http://0.0.0.0:{a.port}  (ntfy push: {'on' if os.environ.get('SWEDEN_NTFY_TOPIC') else 'off'})")
+    log(f"SWEDEN terminal on http://0.0.0.0:{a.port}  ({len(acc.users())} account(s), "
+        f"mail: {'Brevo' if acc.mailer.cfg else 'not set up - codes go to this log'})")
     serve(t, a.port)
 
 
