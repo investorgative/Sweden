@@ -6,7 +6,8 @@ import { bisector } from 'd3-array'
 import type { EquityPoint } from '@/data/types'
 import { useMeasure } from './useMeasure'
 import { dateLong, money, MONTHS, pct } from '@/lib/format'
-import { usePrivacy } from '@/components/ui/primitives'
+import { Segmented, usePrivacy } from '@/components/ui/primitives'
+import { useUI } from '@/store/useUI'
 
 export interface EquityChartProps {
   curve: EquityPoint[]
@@ -25,7 +26,36 @@ export interface EquityChartProps {
 
 const bis = bisector<EquityPoint, number>((d) => d.t).center
 
-export function EquityChart({ curve, height = 340, onScrub, milestones = [], baseline, showDrawdown = true, ghost, ghostLabel = 'What-if', activeIndex, stickyScrub }: EquityChartProps) {
+/** The equity chart with an Equity / Profit switch (profit = the result since the start of the curve, from 0). */
+export function EquityChart(props: EquityChartProps & { toggle?: boolean }) {
+  const { toggle = false, ...rest } = props
+  const mode = useUI((s) => s.curveMode)
+  const setMode = useUI((s) => s.setCurveMode)
+  const profit = toggle && mode === 'profit'
+  const shift = props.baseline ?? props.curve[0]?.equity ?? 0
+  const curve = useMemo(() => (profit ? props.curve.map((p) => ({ ...p, equity: p.equity - shift, peak: p.peak - shift })) : props.curve), [profit, props.curve, shift])
+  const ghost = useMemo(() => (profit && props.ghost ? props.ghost.map((p) => ({ ...p, equity: p.equity - shift, peak: p.peak - shift })) : props.ghost), [profit, props.ghost, shift])
+  if (!toggle) return <EquityChartBase {...rest} />
+  return (
+    <div>
+      <div className="flex justify-end px-2 pb-1">
+        <Segmented
+          layoutId={`curve-${props.height ?? 0}`}
+          size="sm"
+          options={[
+            { value: 'equity', label: 'Equity' },
+            { value: 'profit', label: 'Profit' },
+          ]}
+          value={mode}
+          onChange={setMode}
+        />
+      </div>
+      <EquityChartBase {...rest} curve={curve} ghost={ghost} baseline={profit ? 0 : props.baseline} />
+    </div>
+  )
+}
+
+function EquityChartBase({ curve, height = 340, onScrub, milestones = [], baseline, showDrawdown = true, ghost, ghostLabel = 'What-if', activeIndex, stickyScrub }: EquityChartProps) {
   const [ref, { width }] = useMeasure<HTMLDivElement>()
   const id = useId().replace(/:/g, '')
   const privacy = usePrivacy()

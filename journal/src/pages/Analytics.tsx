@@ -138,7 +138,7 @@ function StatsTab() {
       <Card>
         <CardHeader title="Equity & underwater curve" subtitle="Hover to inspect any trade" />
         <div className="px-2 pb-3 sm:px-4">
-          <EquityChart curve={curve} height={340} baseline={startEquity} />
+          <EquityChart toggle curve={curve} height={340} baseline={startEquity} />
         </div>
       </Card>
 

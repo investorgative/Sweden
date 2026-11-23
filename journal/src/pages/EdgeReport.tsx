@@ -104,7 +104,7 @@ export function EdgeReport() {
           </div>
         </div>
         <div className="px-2 pb-3 sm:px-4">
-          <EquityChart curve={curve} ghost={ghost} ghostLabel="without selected leaks" height={300} showDrawdown={false} baseline={startEquity} />
+          <EquityChart toggle curve={curve} ghost={ghost} ghostLabel="without selected leaks" height={300} showDrawdown={false} baseline={startEquity} />
         </div>
       </Card>
 

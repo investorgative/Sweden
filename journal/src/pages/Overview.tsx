@@ -121,7 +121,7 @@ export function Overview() {
             <MousePointerClick size={12} className="text-gold/70" /> Drag across the curve — the house rebuilds to that moment.
           </div>
           <div className="px-2 pb-3 sm:px-4">
-            <EquityChart curve={curve} height={360} onScrub={setScrub} milestones={milestones} baseline={startEquity} />
+            <EquityChart toggle curve={curve} height={360} onScrub={setScrub} milestones={milestones} baseline={startEquity} />
           </div>
         </Card>
 
