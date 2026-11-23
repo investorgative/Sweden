@@ -11,7 +11,10 @@ Positions: average cost from the recorded buys; tokens that arrived by transfer 
 current SOL price. The equity curve is recorded from the moment the wallet is added (snapshots every 5 min); before
 that only the cash (SOL) line can be rebuilt from the history.
 """
-import json, os, re, sqlite3, threading, time, urllib.request
+import base64, json, os, re, sqlite3, sys, threading, time, urllib.request
+
+sys.path.insert(0, os.path.dirname(__file__))
+from pump_events import b58
 
 WSOL = "So11111111111111111111111111111111111111112"
 USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"   # counts as cash (USD), not as a position
@@ -26,11 +29,18 @@ def log(*a):
     print(time.strftime("%Y-%m-%d %H:%M:%S"), *a, flush=True)
 
 
+MAX_BYTES = 64 * 2 ** 20                         # never read a bigger answer (a bot wallet's token list was > 2 GB)
+
+
 def http_json(url, body=None, timeout=20):
     req = urllib.request.Request(url, data=json.dumps(body).encode() if body is not None else None,
                                  headers={"Content-Type": "application/json", "Accept": "application/json",
                                           "User-Agent": "Mozilla/5.0"})
-    return json.load(urllib.request.urlopen(req, timeout=timeout))
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        raw = r.read(MAX_BYTES + 1)
+    if len(raw) > MAX_BYTES:
+        raise RuntimeError("answer too large (wallet with a huge number of token accounts?)")
+    return json.loads(raw)
 
 
 class Helius:
@@ -134,6 +144,7 @@ class Wallets:
         self.meta = {}                           # mint -> (time, usd, name, sym, image) from DexScreener
         self.sol_usd = lambda: 0.0
         self.brief_cache = {}
+        self.decimals = {}                       # mint -> decimals (cached)
 
     # ---------- setup ----------
     def address(self, uid):
@@ -220,6 +231,8 @@ class Wallets:
                 except Exception as e:
                     self.live.setdefault(uid, {"bal": 0})["error"] = str(e)[:200]
                     self.live[uid]["bal"] = time.time()          # retry on the next cadence, not every 5 s
+                    if "too large" in str(e):                    # a bot-sized wallet: do not download 64 MB every 30 s
+                        self.live[uid]["bal"] = time.time() + 1800
                     log(f"wallet {uid}: {e!r}")
 
     def backfill(self, uid, addr):
@@ -251,14 +264,27 @@ class Wallets:
 
     def refresh(self, uid, addr, last_sig):
         sol = self.h.rpc("getBalance", [addr])["value"] / 1e9
-        tokens = {}
+        raw = {}
         for prog in TOKEN_PROGRAMS:
-            res = self.h.rpc("getTokenAccountsByOwner", [addr, {"programId": prog}, {"encoding": "jsonParsed"}])
+            # only mint (32 bytes), owner (32) and amount (8) of each token account: small even for bot wallets with
+            # tens of thousands of (mostly empty) token accounts
+            res = self.h.rpc("getTokenAccountsByOwner", [addr, {"programId": prog},
+                                                         {"encoding": "base64", "dataSlice": {"offset": 0, "length": 72}}])
             for acc in res["value"]:
-                info = acc["account"]["data"]["parsed"]["info"]
-                amt = float(info["tokenAmount"]["uiAmount"] or 0)
+                d = base64.b64decode(acc["account"]["data"][0])
+                amt = int.from_bytes(d[64:72], "little")
                 if amt > 0:
-                    tokens[info["mint"]] = tokens.get(info["mint"], 0) + amt
+                    m = b58(d[0:32])
+                    raw[m] = raw.get(m, 0) + amt
+        need = [m for m in raw if m not in self.decimals]
+        for i in range(0, len(need), 100):                    # decimals of the held mints only
+            res = self.h.rpc("getMultipleAccounts", [need[i:i + 100], {"encoding": "jsonParsed"}])
+            for m, v in zip(need[i:i + 100], res["value"]):
+                try:
+                    self.decimals[m] = int(v["data"]["parsed"]["info"]["decimals"])
+                except (TypeError, KeyError, ValueError):
+                    self.decimals[m] = 6
+        tokens = {m: a / 10 ** self.decimals.get(m, 6) for m, a in raw.items()}
         sol += tokens.pop(WSOL, 0.0)
         # new transactions since the last one we have
         params = {"limit": 100}

@@ -1346,7 +1346,12 @@ def serve(t, port):
                 self.send(200, {"wallets": t.smart_list})
             elif u.path == "/api/wallet":
                 t.wallets.touch(uid)
-                self.send(200, t.wallets.full(uid))
+                full = t.wallets.full(uid)
+                notes = acc.users()[uid]["notes"]
+                for row in full.get("open", []) + full.get("closed", []):
+                    if row["mint"] in notes:
+                        row["note"] = notes[row["mint"]]
+                self.send(200, full)
             else:
                 self.send(404, {"error": "not found"})
 

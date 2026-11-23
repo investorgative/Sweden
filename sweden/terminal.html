@@ -293,6 +293,14 @@
   .tlist button.mini { background: none; border: 0; color: var(--muted); padding: 2px 4px; }
   .tlist button.mini:hover { color: var(--text); }
   .wnote { color: var(--faint); font-size: 12px; }
+  .wstats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .cal .dh { color: var(--faint); font-size: 10px; text-align: center; }
+  .cal .d { aspect-ratio: 1.6; border-radius: 6px; background: var(--panel2); font-size: 10px; color: var(--muted); display: flex; flex-direction: column;
+            align-items: center; justify-content: center; line-height: 1.1; }
+  .cal .d b { font-size: 10px; color: var(--text); font-weight: 600; }
+  .cal .d.today { outline: 1px solid var(--blue); }
+  @media (max-width: 900px) { .wstats { grid-template-columns: 1fr; } }
   @media (max-width: 900px) { .wp-kpis { grid-template-columns: repeat(2, 1fr); } #wchart { height: 240px; } }
   @media (max-width: 480px) { .wchip small { display: none; } }
 
@@ -1248,6 +1256,8 @@ function showWallet() {
     <div class="wp-body"><div class="wp-kpis num" id="wpkpis"></div>
       <div class="legend"><span><i style="background:var(--blue)"></i>Equity without hidden tokens (since the wallet was added)</span><span><i style="background:var(--yellow)"></i>Cash (SOL, rebuilt from the history)</span></div>
       <div id="wchart"><div class="msg">Loading…</div></div>
+      <div class="wstats"><div class="cp-box"><h4>Your trading (closed positions in the loaded history)</h4><div class="kv num" id="wpstats"></div></div>
+        <div class="cp-box"><h4>Profit calendar (realized, last 5 weeks)</h4><div id="wpcal"></div></div></div>
       <div class="cp-box"><div class="cp-tabs" style="align-items:center"><button class="tab" data-wtab="open">Open positions</button><button class="tab" data-wtab="closed">Closed</button>
         <button class="tab" data-wtab="txs">Transactions</button><span class="spacer"></span><button class="iconbtn" id="wpcsv" title="Download this tab as CSV">CSV</button><span id="wpopts" style="display:flex;gap:12px"><label class="wnote" id="wphidlbl"><input type="checkbox" id="wphid"> show hidden <span id="wphidn"></span></label>
         <label class="wnote"><input type="checkbox" id="wpdust"> show dust</label></span></div>
@@ -1334,10 +1344,37 @@ async function wpRefresh() {
     ["Realized (history)", solPnl(p.rall), usdOf(p.rall)]]
     .map(([k, v, sub]) => `<div class="kpi"><div class="k">${k}</div><div class="v">${v}</div>${sub}</div>`).join("");
   if (wp.chart) drawWChart();
+  renderWStats(d);
   $("#wpnote").textContent = `History: the last ${d.history_n} transactions (up to ${d.max_backfill} are loaded the first time, every new one after that).` +
     (p.incomplete ? ` ${p.incomplete} closed position(s) started before that history and have no profit figure.` : "") +
     " Profit uses the average buy cost; tokens received by transfer count as cost-free. USD at today's SOL price.";
   renderWalletList();
+}
+function renderWStats(d) {
+  const cl = d.closed.filter((r) => r.pnl_sol != null), wins = cl.filter((r) => r.pnl_sol > 0), losses = cl.filter((r) => r.pnl_sol <= 0);
+  const sum = (xs) => xs.reduce((a, b) => a + b, 0), avgPct = (xs) => xs.length ? sum(xs.map((r) => r.pnl_pct || 0)) / xs.length : null;
+  const pf = losses.length && sum(losses.map((r) => r.pnl_sol)) ? sum(wins.map((r) => r.pnl_sol)) / Math.abs(sum(losses.map((r) => r.pnl_sol))) : null;
+  const holds = cl.filter((r) => r.first && r.last).map((r) => r.last - r.first).sort((a, b) => a - b);
+  const best = cl.reduce((a, r) => !a || r.pnl_sol > a.pnl_sol ? r : a, null), worst = cl.reduce((a, r) => !a || r.pnl_sol < a.pnl_sol ? r : a, null);
+  $("#wpstats").innerHTML = cl.length ? [["Closed positions", cl.length], ["Win rate", `${Math.round(wins.length / cl.length * 100)}% <small class="muted">${wins.length} won · ${losses.length} lost</small>`],
+    ["Average win / loss", `${pctTxt(avgPct(wins))} / ${pctTxt(avgPct(losses))}`], ["Profit factor", pf == null ? "–" : pf.toFixed(2) + (pf >= 1 ? ' <small class="green">profitable</small>' : ' <small class="red">losing</small>')],
+    ["Best / worst", `${best ? "$" + esc(best.sym || "?") + " " + solPnl(best.pnl_sol) : "–"} / ${worst ? "$" + esc(worst.sym || "?") + " " + solPnl(worst.pnl_sol) : "–"}`],
+    ["Median holding time", holds.length ? secs(holds[Math.floor(holds.length / 2)]) : "–"]].map(([k, v]) => `<span>${k}</span><b>${v}</b>`).join("")
+    : '<span>No closed positions with a known buy yet</span><b></b>';
+  // calendar: realized profit per local day, last 35 days (Monday first)
+  const day = (ts) => { const x = new Date(ts * 1000); return x.getFullYear() + "-" + (x.getMonth() + 1) + "-" + x.getDate(); };
+  const per = {}; cl.forEach((r) => { if (r.last) per[day(r.last)] = (per[day(r.last)] || 0) + r.pnl_sol; });
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const start = new Date(today); start.setDate(start.getDate() - 34);
+  while ((start.getDay() + 6) % 7) start.setDate(start.getDate() - 1);
+  const maxAbs = Math.max(0.01, ...Object.values(per).map(Math.abs));
+  let cells = "";
+  for (let x = new Date(start); x <= today; x.setDate(x.getDate() + 1)) {
+    const v = per[x.getFullYear() + "-" + (x.getMonth() + 1) + "-" + x.getDate()], a = v == null ? 0 : 0.15 + 0.6 * Math.abs(v) / maxAbs;
+    const bg = v == null ? "" : `background:rgba(${v >= 0 ? "47,227,172" : "236,57,122"},${a.toFixed(2)})`;
+    cells += `<div class="d${+x === +today ? " today" : ""}" style="${bg}" title="${x.toLocaleDateString()}${v != null ? ": " + (v >= 0 ? "+" : "") + v.toFixed(3) + " SOL" : ""}">${x.getDate()}${v != null ? `<b>${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(2)}</b>` : ""}</div>`;
+  }
+  $("#wpcal").innerHTML = `<div class="cal">${["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map((x) => `<div class="dh">${x}</div>`).join("")}${cells}</div>`;
 }
 const tokCell = (r) => { const img = safeUrl(r.image);
   return `<div class="tok">${img ? `<img src="${esc(img)}" loading="lazy" referrerpolicy="no-referrer" alt="">` : '<span class="ph"></span>'}<span><b>${esc(r.sym || short(r.mint))}</b><br><small>${esc((r.name || "").slice(0, 22))}</small></span></div>`; };
@@ -1358,7 +1395,7 @@ function renderWalletList() {
       : '<div class="empty">No open positions' + (d.open.length ? " shown (tick “show hidden” or “show dust”)" : "") + ".</div>";
   } else if (wp.tab === "closed") {
     $("#wplist").innerHTML = d.closed.length ? `<table class="tlist num"><tr><th>Token</th><th class="r">Bought</th><th class="r">Sold</th><th class="r">PnL</th><th class="r">Trades</th><th class="r">Last</th></tr>` +
-      d.closed.map((r) => `<tr><td data-open="${esc(r.mint)}" style="cursor:pointer">${tokCell(r)}</td><td class="r">${sol(r.cost_sol)}</td><td class="r">${sol(r.proceeds_sol)}</td>
+      d.closed.map((r) => `<tr><td data-open="${esc(r.mint)}" style="cursor:pointer">${tokCell(r)}${r.note ? `<div style="font-size:11px;color:var(--muted);max-width:220px;white-space:normal">${r.note.tag ? NOTE_TAGS[r.note.tag] + " " : ""}${esc((r.note.text || "").slice(0, 80))}</div>` : ""}</td><td class="r">${sol(r.cost_sol)}</td><td class="r">${sol(r.proceeds_sol)}</td>
         <td class="r">${r.pnl_sol == null ? '<small class="muted">buy not in history</small>' : solPnl(r.pnl_sol) + (r.pnl_pct != null ? ` <small class="${r.pnl_pct >= 0 ? "green" : "red"}">${r.pnl_pct >= 0 ? "+" : ""}${(r.pnl_pct * 100).toFixed(0)}%</small>` : "")}</td>
         <td class="r">${r.buys}/${r.sells}</td><td class="r">${r.last ? secs(now - r.last) : "–"}</td></tr>`).join("") + "</table>"
       : '<div class="empty">No closed positions in the loaded history.</div>';
