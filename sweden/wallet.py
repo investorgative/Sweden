@@ -48,6 +48,31 @@ class Helius:
         url = f"https://api.helius.xyz/v0/addresses/{address}/transactions?api-key={self.key}&limit={limit}"
         return http_json(url + (f"&before={before}" if before else ""), timeout=30)
 
+    def tx(self, sig):
+        """One transaction by getTransaction (1 credit, vs 100 for the enhanced parse) in the shape deltas() expects:
+        balance changes per account and per token account owner."""
+        t = self.rpc("getTransaction", [sig, {"encoding": "json", "maxSupportedTransactionVersion": 1, "commitment": "confirmed"}])
+        if not t:
+            return None
+        msg, meta = t["transaction"]["message"], t.get("meta") or {}
+        la = meta.get("loadedAddresses") or {}
+        keys = msg["accountKeys"] + la.get("writable", []) + la.get("readonly", [])
+        pre, post = meta.get("preBalances") or [], meta.get("postBalances") or []
+        acc = [{"account": k, "nativeBalanceChange": (post[i] - pre[i]) if i < len(pre) and i < len(post) else 0,
+                "tokenBalanceChanges": []} for i, k in enumerate(keys)]
+        tb = {}
+        for side, rows in (("pre", meta.get("preTokenBalances") or []), ("post", meta.get("postTokenBalances") or [])):
+            for b in rows:
+                e = tb.setdefault(b["accountIndex"], {"mint": b["mint"], "owner": b.get("owner"), "dec": b["uiTokenAmount"]["decimals"], "pre": 0, "post": 0})
+                e[side] = int(b["uiTokenAmount"]["amount"])
+                e["owner"] = e["owner"] or b.get("owner")
+        for i, e in tb.items():
+            if e["post"] != e["pre"] and i < len(acc):
+                acc[i]["tokenBalanceChanges"].append({"userAccount": e["owner"], "mint": e["mint"],
+                                                      "rawTokenAmount": {"tokenAmount": str(e["post"] - e["pre"]), "decimals": e["dec"]}})
+        return {"signature": sig, "timestamp": t.get("blockTime"), "fee": meta.get("fee") or 0, "feePayer": keys[0] if keys else None,
+                "transactionError": meta.get("err"), "accountData": acc}
+
     def parse(self, sigs):
         return http_json(f"https://api.helius.xyz/v0/transactions?api-key={self.key}", {"transactions": sigs}, timeout=30)
 
@@ -241,7 +266,13 @@ class Wallets:
             params["until"] = last_sig
         sigs = [s["signature"] for s in self.h.rpc("getSignaturesForAddress", [addr, params])]
         if sigs:
-            self.store(uid, addr, self.h.parse(sigs[:100]))
+            txs = []
+            for sg in sigs[:100]:                         # 1 credit each (the enhanced parse costs 100 per call)
+                t = self.h.tx(sg)
+                if t:
+                    txs.append(t)
+                time.sleep(0.12)                          # free plan: 10 requests / s
+            self.store(uid, addr, txs)
             with self.lock:
                 self.db.execute("UPDATE wallets SET last_sig = ? WHERE uid = ?", (sigs[0], uid))
                 self.db.commit()

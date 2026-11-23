@@ -120,6 +120,7 @@ class Accounts:
             CREATE TABLE IF NOT EXISTS codes (email TEXT, purpose TEXT, code TEXT, expires REAL, tries INT, sent REAL,
                 PRIMARY KEY (email, purpose));
             CREATE TABLE IF NOT EXISTS prefs (uid INT, mint TEXT, kind TEXT, PRIMARY KEY (uid, mint, kind));
+            CREATE TABLE IF NOT EXISTS snooze (uid INT, mint TEXT, until REAL, PRIMARY KEY (uid, mint));
             CREATE TABLE IF NOT EXISTS notes (uid INT, mint TEXT, text TEXT, tag TEXT, ts REAL, PRIMARY KEY (uid, mint));
             CREATE TABLE IF NOT EXISTS pxalerts (id INTEGER PRIMARY KEY, uid INT, mint TEXT, sym TEXT, kind TEXT, op TEXT,
                 value REAL, created REAL);
@@ -156,8 +157,14 @@ class Accounts:
         for uid, mint, text, tag, ts in nrows:
             if uid in cache:
                 cache[uid].setdefault("notes", {})[mint] = {"text": text, "tag": tag, "ts": ts}
+        with self.lock:
+            zrows = self.db.execute("SELECT uid, mint, until FROM snooze WHERE until > ?", (time.time(),)).fetchall()
+        for uid, mint, until in zrows:
+            if uid in cache:
+                cache[uid].setdefault("snooze", {})[mint] = until
         for u in cache.values():
             u.setdefault("notes", {})
+            u.setdefault("snooze", {})
 
     def users(self):
         return self.cache
@@ -380,3 +387,12 @@ class Accounts:
             return False
         h = time.gmtime((now or time.time()) + s.get("tz_min", 0) * 60).tm_hour
         return a <= h < b if a < b else (h >= a or h < b)
+
+    # ---------- snooze: hide a coin for a few hours ----------
+    def snooze(self, uid, mint, hours):
+        with self.lock:
+            self.db.execute("DELETE FROM snooze WHERE uid = ? AND (mint = ? OR until < ?)", (uid, mint, time.time()))
+            if hours > 0:
+                self.db.execute("INSERT INTO snooze VALUES (?, ?, ?)", (uid, mint, time.time() + min(hours, 168) * 3600))
+            self.db.commit()
+        self.reload()

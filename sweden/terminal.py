@@ -30,7 +30,7 @@ Access: the page holds no data; /api/state needs a token that only the passkey h
 A token is signed with the passkey and valid for TOKEN_DAYS, so restarts keep you logged in and changing the
 passkey logs every browser out. Wrong passkeys lock the address out for longer and longer.
 """
-import argparse, collections, glob, hashlib, hmac, json, os, queue, re, secrets, sys, threading, time, urllib.parse
+import argparse, collections, glob, hashlib, hmac, itertools, json, os, queue, re, secrets, sys, threading, time, urllib.parse
 import urllib.request, zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -40,6 +40,7 @@ import replay as R
 import signals as SG
 import wallet as WL
 from grad_replay import SKIP, WSOL, sol_usd
+from pump_events import decode, pump_data_lines
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 HISTORY_S = 72 * 3600                    # creator history (24 h) and copied names (72 h) need this much data
@@ -51,6 +52,8 @@ MAIL_FILE = os.environ.get("SWEDEN_MAIL_FILE") or os.path.join(HERE, "..", "gmai
 TUNNEL_LOG = os.environ.get("SWEDEN_TUNNEL_LOG") or os.path.join(HERE, "..", "logs", "tunnel.log")   # tests: =none
 LAST_LINK = os.path.join(R.DATA, "last_link.txt")
 TOKEN_DAYS = 30
+REPAIR_DAILY = 10000                     # Helius calls (1 credit each) per day for the gap repair (free plan: 1 M credits / month)
+REPAIR_AUTO = 120                        # transactions fetched per coin automatically at graduation (more with the button)
 COPY_MATCHES = 6                         # earlier same-name coins kept per copied coin
 AXIOM_FIELDS = ("top10", "dev", "snipers", "insiders", "bundlers", "holders")
 LOCKOUT = {5: 60, 6: 300, 7: 900}        # wrong passkeys from one address -> seconds locked (then 1 h each)
@@ -212,7 +215,11 @@ class Coin:
         self.pool = None
         self.copy_of = []                           # (mint, launch ts, why) of earlier graduated coins it copies
         self.last_trade = None
-        self.trades = []                            # (slot, seq, ts, mcap SOL, SOL lamports, buy, wallet, tokens, pool?)
+        self.trades = []                            # (slot, seq, ts, mcap SOL, SOL lamports, buy, wallet, tokens, pool?, sig8,
+                                                    #  SOL reserve, token reserve after the trade)
+        self.pool_base0 = None                      # tokens put into the pool at migration (chain check)
+        self.repair = None                          # result of the last gap repair
+        self.repairing = False
         self.liq_sol = None                         # real SOL in the curve / pool after the latest trade
         self.res = None                             # (SOL lamports, raw tokens) reserves after the latest trade
         self.fee = 0.0125                           # fee share of the latest trade
@@ -311,6 +318,8 @@ class Terminal:
         self.events = 0
         self.seq = 0
         self.smart_list, self.smart_set = [], set()
+        self.repair_q = queue.Queue()
+        self.repair_calls = collections.deque()          # times of Helius calls by the repair (daily budget)
         self._watched = set()
 
     # ---------- data ----------
@@ -369,7 +378,7 @@ class Terminal:
             if r[10] > 0:
                 self.seq += 1
                 mc = r[9] / r[10] * 1e6                 # reserves after the trade -> mcap in SOL
-                c.trades.append((r[0], self.seq, r[3], mc, r[7], r[6], r[5], r[8], False))
+                c.trades.append((r[0], self.seq, r[3], mc, r[7], r[6], r[5], r[8], False, r[1], r[9], r[10]))
                 if r[0] >= c.last_slot:
                     c.liq_sol = (r[9] - c.c["vsol0"]) / 1e9
                     c.res = (r[9], r[10])
@@ -383,11 +392,14 @@ class Terminal:
                 c.S = None                          # free the per-wallet state
             if c.grad_ts is None:
                 self.watch_graduated(c)
+                if self.live and not c.flag and not c.quote:
+                    self.repair_q.put(c.mint)                   # check the trade chain, fetch missing trades
             c.grad_ts = r[3]
         elif kind == "P":
             if r[9] == R.NO_CREATOR:                # a pool opened by hand, not the migration (fake graduation)
                 return
             c.pool_ok, c.pool = r[6] == WSOL, r[5]
+            c.pool_base0 = r[7]
             c.grad_ts = c.grad_ts or r[3]
             if c.S is not None:                     # graduation event missed by the feed: run the checks now
                 c.feat = c.S.features()
@@ -401,7 +413,7 @@ class Terminal:
             Q = (pq + quote if buy else pq - quote) + vq
             if B > 0 and Q > 0:
                 self.seq += 1
-                c.trades.append((r[0], self.seq, r[3], Q / B * 1e6, quote, buy, r[5], base, True))
+                c.trades.append((r[0], self.seq, r[3], Q / B * 1e6, quote, buy, r[5], base, True, r[1], Q, B))
                 if r[0] >= c.last_slot:
                     c.liq_sol = (pq + quote if buy else pq - quote) / 1e9
                     c.res = (Q, B)
@@ -470,7 +482,7 @@ class Terminal:
 
     def check_danger(self, c, wallet, tok):
         """A coin someone holds: the dev or a big holder (>= 3 % of supply) just sold at least half of their tokens."""
-        if not self.live:
+        if not self.live or c.repairing:
             return
         left = max(0, c.H.hold.get(wallet, 0))
         before = left + tok
@@ -500,7 +512,7 @@ class Terminal:
     def check_px(self, c, mcap_sol):
         """Fire the price / mcap alerts set on this coin (one-shot)."""
         alerts = self.acc.px.get(c.mint)
-        if not alerts or not self.live or not self.usd:
+        if not alerts or not self.live or not self.usd or c.repairing:
             return
         mc = mcap_sol * self.usd
         for a in list(alerts):
@@ -527,7 +539,8 @@ class Terminal:
             return True, False
         u = self.acc.users()[uid]
         st = c.ust.get(uid)
-        if (u["settings"]["alert_watch"] and c.mint in u["watch"] and c.mint not in u["hide"] and c.grad_ts is not None
+        if (u["settings"]["alert_watch"] and c.mint in u["watch"] and c.mint not in u["hide"]
+                and u["snooze"].get(c.mint, 0) <= time.time() and c.grad_ts is not None
                 and c.pool_ok and c.price is not None and st is not None and st.stage not in ("top", "dead")):
             return True, True
         return False, False
@@ -542,6 +555,8 @@ class Terminal:
             return False, "not graduated"
         if c.mint in u["hide"]:
             return False, "hidden by you"
+        if u["snooze"].get(c.mint, 0) > time.time():
+            return False, f"snoozed for {(u['snooze'][c.mint] - time.time()) / 3600:.1f} h more"
         if time.time() - c.ts > s["max_age_h"] * 3600:
             return False, "older than max age"
         if c.flag and not s["mayhem"]:
@@ -599,6 +614,120 @@ class Terminal:
             return False, "test alert shown - no ntfy topic set (Settings > Alerts)"
         ok = self.push(topic, "test", None, "Test from the Sweden terminal - push works")
         return ok, "test alert + push sent - check your phone" if ok else "push failed (see logs/terminal.log)"
+
+    # ---------- gap repair: the free feed misses trades; fetch them from the chain (Helius) ----------
+    @staticmethod
+    def chain_gaps(c):
+        """Where trades are missing, from the reserves (on the curve the token reserve moves by exactly each trade's
+        amount, in the pool the base reserve too): {"curve": [(from slot, to slot), ...], "pool": [...]}."""
+        def gaps(trades, start, first_slot):
+            prev, prev_slot, out = start, first_slot, []
+            for slot, grp in itertools.groupby(sorted(trades, key=lambda x: (x[0], x[1])), key=lambda x: x[0]):
+                g = list(grp)
+                while g:
+                    k = next((i for i, x in enumerate(g) if (prev - x[7] if x[5] else prev + x[7]) == x[11]), None)
+                    if k is None:
+                        out.append((prev_slot, slot))
+                        k = 0
+                    prev, prev_slot = g.pop(k)[11], slot
+            return out
+        curve = [x for x in c.trades if not x[8] and len(x) > 11]
+        pool = [x for x in c.trades if x[8] and len(x) > 11]
+        return {"curve": gaps(curve, c.c["vtok0"], c.slot) if curve else [],
+                "pool": gaps(pool, c.pool_base0, min(x[0] for x in pool)) if pool and c.pool_base0 else []}
+
+    @classmethod
+    def chain_breaks(cls, c):
+        g = cls.chain_gaps(c)
+        return (len(g["curve"]), len(g["pool"]))
+
+    def rebuild_feat(self, c):
+        """The on-chain checks again from all curve trades (after recovered ones were added)."""
+        S = R.State(c.c)
+        for x in sorted((x for x in c.trades if not x[8] and len(x) > 11), key=lambda x: (x[0], x[1])):
+            S.apply(x[0], (x[0], x[9], "T", x[2], c.mint, x[6], x[5], x[4], x[7], x[10], x[11], 0, 0, None))
+        c.feat = S.features()
+
+    def repair_worker(self):
+        while True:
+            mint = self.repair_q.get()
+            try:
+                self.repair(mint, budget=REPAIR_AUTO)
+            except Exception as e:
+                log(f"repair {mint[:6]}: {e!r}")
+
+    def repair(self, mint, budget=250):
+        h = self.wallets.h
+        if not h:
+            return dict(ok=False, error="no Helius key")
+        now = time.time()
+        while self.repair_calls and self.repair_calls[0] < now - 86400:
+            self.repair_calls.popleft()
+        if len(self.repair_calls) > REPAIR_DAILY:
+            return dict(ok=False, error="daily Helius budget for repairs used up")
+        with self.lock:
+            c = self.coins.get(mint)
+            if c is None:
+                return dict(ok=False, error="coin not tracked")
+            have, pool = {x[9] for x in c.trades if len(x) > 9}, c.pool
+            gaps = self.chain_gaps(c)
+        before_breaks = (len(gaps["curve"]), len(gaps["pool"]))
+        if before_breaks == (0, 0):
+            c.repair = dict(ts=now, fetched=0, recovered=0, before=before_breaks, after=before_breaks)
+            return dict(ok=True, **c.repair)
+
+        def candidates(address, ranges):
+            """Signatures of `address` inside the gap ranges that we do not have (newest pages first)."""
+            if not ranges or not address:
+                return []
+            lo = min(r[0] for r in ranges)
+            out, before = [], None
+            for _ in range(20):
+                page = h.rpc("getSignaturesForAddress", [address, {"limit": 1000, **({"before": before} if before else {})}])
+                self.repair_calls.append(time.time())
+                for x in page:
+                    if x["err"] is None and x["signature"][:8] not in have and any(a <= x["slot"] <= b for a, b in ranges):
+                        out.append(x)
+                if len(page) < 1000 or page[-1]["slot"] < lo:
+                    break
+                before = page[-1]["signature"]
+            return out
+        # pool gaps through the pool's own address (nearly every transaction there is a trade), curve gaps through the mint
+        missing = candidates(pool, gaps["pool"]) + candidates(mint, gaps["curve"])
+        missing = list({x["signature"]: x for x in missing}.values())
+        missing.sort(key=lambda x: x["slot"])
+        fetched = recovered = 0
+        c.repairing = True
+        try:
+            for x in missing[:budget]:
+                tx = h.rpc("getTransaction", [x["signature"], {"encoding": "json", "maxSupportedTransactionVersion": 1,
+                                                                 "commitment": "confirmed"}])
+                self.repair_calls.append(time.time())
+                fetched += 1
+                logs = ((tx or {}).get("meta") or {}).get("logMessages") or []
+                for payload in pump_data_lines(logs):
+                    rec = decode(payload)
+                    if not rec or rec[0] not in ("T", "S"):
+                        continue
+                    if rec[0] == "S":
+                        if rec[2] != pool:
+                            continue
+                        rec = rec[:2] + [mint] + rec[3:]
+                    elif rec[2] != mint:
+                        continue
+                    with self.lock:
+                        self.event([x["slot"], x["signature"][:8]] + rec, False)
+                    recovered += 1
+        finally:
+            c.repairing = False
+        with self.lock:
+            if c.S is None and recovered:
+                self.rebuild_feat(c)
+            after = self.chain_breaks(c)
+        c.repair = dict(ts=time.time(), fetched=fetched, recovered=recovered, before=before_breaks, after=after,
+                        left=max(0, len(missing) - budget))
+        log(f"repair {c.sym}: gaps {before_breaks} -> {after}, {recovered} trades recovered from {fetched} transactions")
+        return dict(ok=True, **c.repair)
 
     def smart_worker(self):
         """Every 5 min: the wallets with the most realized profit over the last 24 h across the coins in memory
@@ -1008,6 +1137,7 @@ class Terminal:
         with self.lock:
             c = self.coins.get(mint)
             info["res"] = list(c.res) if c and c.res else None
+            info["quality"] = dict(breaks=self.chain_breaks(c), repair=c.repair) if c else None
             info["fee"] = c.fee if c else None
         return dict(info=info, trades=trades, holders=holders, sol_usd=self.usd, traders=traders, pressure=press, dev=devs[:30], mine=mine,
                     alerts=[a for a in self.acc.px_list(uid) if a["mint"] == mint])
@@ -1099,7 +1229,7 @@ class Terminal:
                                 prior=f.get("prior_launches"), copy=f.get("copy"), dev_sold=f.get("dev_sold"),
                                 traders=f.get("traders")),
                     live=c.H.metrics(), meta=c.meta or {}, mine=self.mine(brief, c.mint, self.mcap_usd(c)),
-                    note=u["notes"].get(c.mint),
+                    note=u["notes"].get(c.mint), snoozed=u["snooze"].get(c.mint, 0) > now,
                     smart=sum(1 for w in self.smart_set if c.H.hold.get(w, 0) > 0)))
             alerts = list(self.alerts[uid])
         self.wallets.touch(uid)
@@ -1246,10 +1376,18 @@ def serve(t, port):
                     return self.send(200, {"ok": True, "alerts": acc.px_list(uid)})
                 except (KeyError, TypeError, ValueError):
                     return self.send(400, {"ok": False})
+            if p == "/api/repair":
+                return self.send(200, t.repair(str(b.get("mint", ""))[:64], budget=400))
             if p == "/api/whatif":
                 return self.send(200, t.whatif(uid, b.get("settings")))
             if p == "/api/daily/preview":
                 return self.send(200, {"text": t.daily_text(uid)})
+            if p == "/api/snooze":
+                try:
+                    acc.snooze(uid, str(b["mint"])[:64], float(b.get("hours", 0)))
+                    return self.send(200, {"ok": True})
+                except (KeyError, TypeError, ValueError):
+                    return self.send(400, {"ok": False})
             if p == "/api/note":
                 try:
                     acc.set_note(uid, str(b["mint"])[:64], str(b.get("text", "")), str(b.get("tag", "")))
@@ -1314,7 +1452,8 @@ def main():
     t.signals = SG.Signals(os.path.join(R.DATA, "signals.db"))
     t.wallets = WL.Wallets(os.path.join(R.DATA, "wallets.db"), HELIUS_KEY_FILE, t.token_price)
     t.wallets.sol_usd = lambda: t.usd
-    for target in (t.loop, t.meta_worker, t.price_worker, t.link_worker, t.wallets.worker, t.daily_worker, t.smart_worker):
+    for target in (t.loop, t.meta_worker, t.price_worker, t.link_worker, t.wallets.worker, t.daily_worker, t.smart_worker,
+                   t.repair_worker):
         threading.Thread(target=target, daemon=True).start()
     log(f"SWEDEN terminal on http://0.0.0.0:{a.port}  ({len(acc.users())} account(s), "
         f"mail: {'Gmail' if acc.mailer.cfg else 'not set up - codes go to this log'}, "

@@ -11,8 +11,10 @@ import argparse, asyncio, collections, json, os, sys, time
 sys.path.insert(0, os.path.dirname(__file__))
 import websockets
 import rpc
-from collector import ENDPOINTS, SUB
+from collector import ENDPOINTS
 from pump_events import PUMP
+
+SUB = {"jsonrpc": "2.0", "id": 1, "method": "logsSubscribe", "params": [{"mentions": [PUMP]}, {"commitment": "confirmed"}]}
 
 got = collections.defaultdict(set)
 drops = collections.Counter()
