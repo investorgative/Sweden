@@ -1136,7 +1136,9 @@ function renderCoin() {
   if (!cp.remembered) { cp.remembered = true; rememberCoin(i.mint, i.name, i.sym); }
   const stage = i.visible ? `<b style="color:var(--${i.stage})">${LABEL[i.stage] || i.stage}</b>` : `<span>${esc(i.hidden)}</span>`;
   $("#cpsub").innerHTML = `<span>$${esc(i.sym)}</span><span>age <b>${dur(i.age_min)}</b></span>${i.graduated ? `<span>graduated <b>${dur(i.grad_min)}</b> ago</span>` : "<span>on the bonding curve</span>"}${stage}`;
-  $("#cpacts").innerHTML = `<button class="iconbtn star${i.watched ? " on" : ""}" data-pref="${i.watched ? "unwatch" : "watch"}" title="Watchlist">${ic("star")}</button>`;
+  $("#cpacts").innerHTML = `<button class="iconbtn star${i.watched ? " on" : ""}" data-pref="${i.watched ? "unwatch" : "watch"}" title="Watchlist">${ic("star")}</button>`
+    + (i.user_hidden ? `<button class="iconbtn" data-pref="unhide" title="Hidden by you - show it again">${ic("show")}</button>`
+                     : `<button class="iconbtn" data-cphide="1" title="Hide this coin and go back (X)">${ic("hide")}</button>`);
   $("#cpax").href = "https://axiom.trade/meme/" + (i.pool || i.mint) + "?chain=sol";
   const fromAth = i.ath_usd ? 1 - i.mcap_usd / i.ath_usd : 0;
   $("#cpkpis").innerHTML = [["Mcap", usd(i.mcap_usd), ""], ["ATH", usd(i.ath_usd) + (fromAth > 0.005 ? ` <small class="red">−${pct(fromAth, 0)}</small>` : ""), ""],
@@ -1591,7 +1593,7 @@ function renderSignalRows(rows, sel) {
 // ---------- keyboard shortcuts (PC) ----------
 const KEYS = [["Everywhere", [["?", "this overview"], ["S", "signals"], ["P", "portfolio"], ["J", "trading journal"], [",", "settings"], ["/", "search (Filtered / Hidden / Watchlist)"],
                               ["Ctrl+V", "open the coin whose CA you paste"], ["Esc", "back / close"]]],
-              ["Coin page", [["C", "copy CA"], ["A", "open on Axiom (also copies the CA)"], ["W", "add to / remove from watchlist"],
+              ["Coin page", [["C", "copy CA"], ["A", "open on Axiom (also copies the CA)"], ["W", "add to / remove from watchlist"], ["X", "hide the coin and go back"],
                              ["1 – 7", "timeframe 1s … 1h"], ["M", "MCap / price"], ["T / R / H / L / D", "trades / top traders / holders / linked wallets / dev history"]]]];
 function showKeys() {
   let el = $("#keyhelp");
@@ -1618,6 +1620,7 @@ document.addEventListener("keydown", (e) => {
     if (k === "w" || k === "W") return setPref(i.mint, i.watched ? "unwatch" : "watch");
     if (k >= "1" && k <= "7") return document.querySelector(`[data-tf="${TFS[+k - 1][0]}"]`)?.click();
     if (k === "m" || k === "M") return document.querySelector(`[data-cmode="${cp.mode === "mcap" ? "price" : "mcap"}"]`)?.click();
+    if (k === "x" || k === "X") return hideAndLeave();
     const tabk = { t: "trades", r: "traders", h: "holders", l: "linked", d: "dev" }[k.toLowerCase()];
     if (tabk) return document.querySelector(`[data-cptab="${tabk}"]`)?.click();
   }
@@ -2051,12 +2054,18 @@ function copyCA(t, btn) {
   };
   if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(t).then(done, fallback); else fallback();
 }
+/** coin page: hide the coin (no recommendations / alerts) and close the page */
+function hideAndLeave() {
+  const mint = cp.mint; if (!mint) return;
+  setPref(mint, "hide");
+  history.replaceState(null, "", location.pathname + location.search); route();   // no coin page left in the history
+}
 async function setPref(mint, action) {
   try {
     const r = await fetch("/api/prefs", { method: "POST", headers: { "Content-Type": "application/json", ...AH() },
                                           body: JSON.stringify({ mint, action }) });
     if (!r.ok) throw 0;
-    toast({ watch: "Added to watchlist", unwatch: "Removed from watchlist", hide: "Hidden - no more alerts for it", unhide: "Shown again" }[action]);
+    toast({ watch: "Added to watchlist", unwatch: "Removed from watchlist", hide: "Hidden - no more alerts for it (tab \u201cHidden by me\u201d to undo)", unhide: "Shown again" }[action]);
     tick(); if (cp.mint) cpRefresh();
   } catch (e) { toast("Not saved", false); }
 }
@@ -2065,6 +2074,7 @@ let axMint = null;
 document.addEventListener("click", (e) => {
   const t = e.target.closest("[data-tab]");
   if (t) { tab = t.dataset.tab; try { localStorage.setItem("swedenTab", tab); } catch (e) {} render(); tick(); return; }
+  if (e.target.closest("[data-cphide]")) { hideAndLeave(); return; }
   const pf = e.target.closest("[data-pref]");
   if (pf) { setPref(pf.closest("[data-mint]").dataset.mint, pf.dataset.pref); return; }
   const ax = e.target.closest("[data-ax]");
