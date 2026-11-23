@@ -30,8 +30,11 @@ NUMERIC = dict(max_age_h=(float, 0.5, 24), max_mcap_usd=(float, 1000, 1e9), bund
                show_dd=(float, 0, 0.9), dd_min=(float, 0.01, 0.95), dd_max=(float, 0.05, 0.99),
                bounce=(float, 0.01, 5), pullback=(float, 0.01, 0.9),
                quiet_from=(int, -1, 23), quiet_to=(int, -1, 23), tz_min=(int, -840, 840), daily_hour=(int, -1, 23),
-               font_scale=(float, 0.8, 1.4))
-BOOLS = ("copy_check", "wash_check", "mayhem", "alert_new", "alert_entry", "alert_watch", "alert_danger", "alert_grad", "alert_track")
+               font_scale=(float, 0.8, 1.4),
+               trade_buy_sol=(float, 0.001, 100), trade_slippage=(float, 1, 50), trade_prio_sol=(float, 0, 0.05),
+               trade_max_sol=(float, 0.01, 100), trade_lock_h=(float, 0.25, 24))
+BOOLS = ("copy_check", "wash_check", "mayhem", "alert_new", "alert_entry", "alert_watch", "alert_danger", "alert_grad", "alert_track",
+         "trade_dblclick", "trade_quickbtn")
 COLORS = ("bg", "panel", "text", "accent")
 
 
@@ -88,6 +91,11 @@ def clean_settings(new, base):
                         sw = int(sw) if isinstance(sw, (int, float)) and 240 <= sw <= 900 else None
                         out[k] = json.dumps({"main": cols[0][:20], "side": cols[1][:20], **({"h": hs} if hs else {}),
                                              **({"sw": sw} if sw else {})})
+            elif k in ("trade_presets", "trade_sell_presets") and isinstance(v, str):
+                hi = 100 if k == "trade_presets" else 100
+                vals = [float(x) for x in v.replace(";", ",").split(",") if x.strip()][:6]
+                if vals and all(0 < x <= hi for x in vals):
+                    out[k] = ",".join(f"{x:g}" for x in vals)
             elif k == "display_name" and isinstance(v, str):
                 out[k] = re.sub(r"[^\w .-]", "", v.strip())[:24]
             elif k == "ntfy_topic" and isinstance(v, str) and (v == "" or TOPIC_RE.match(v.strip())):

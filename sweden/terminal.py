@@ -38,6 +38,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 import accounts as A
 import journal as JN
 import memberfeed as MF
+import trade as TR
 import social as SO
 import replay as R
 import signals as SG
@@ -1681,6 +1682,16 @@ def serve(t, port):
                 self.send(200, {"wallets": t.smart_list})
             elif u.path == "/api/journal":
                 self.send(200, t.journal.payload(uid, t))
+            elif u.path == "/api/trade/status":
+                out = t.trader.status(uid, with_balance=q.get("bal") == ["1"])
+                out["orders"] = t.trader.orders(uid, int(q.get("n", ["8"])[0]) if q.get("n", ["8"])[0].isdigit() else 8)
+                if m and out["wallet"] and q.get("bal") == ["1"]:
+                    try:
+                        raw, dec = t.trader.balance(uid, m, max_age=15.0)
+                        out["token"] = dict(mint=m, raw=raw, amount=raw / 10 ** dec)
+                    except Exception as e:
+                        out["token_error"] = str(e)[:100]
+                self.send(200, out)
             elif u.path == "/api/friends":
                 self.send(200, t.friends_page(uid))
             elif u.path == "/api/journal/circle":
@@ -1725,7 +1736,7 @@ def serve(t, port):
             b = self.body(2_000_000 if p.startswith("/api/journal/") else 100_000 if p.startswith("/api/social/") else 4000)
             if p == "/api/settings":
                 st = acc.save_settings(uid, b.get("settings"))
-                if set(b.get("settings") or {}) - {"cp_layout"}:
+                if {k for k in (b.get("settings") or {}) if k != "cp_layout" and not k.startswith("trade_")}:
                     with t.lock:                         # new dip settings: restart this user's stages quietly
                         for c in t.coins.values():
                             c.ust.pop(uid, None)
@@ -1763,6 +1774,53 @@ def serve(t, port):
                     return self.send(200, {"ok": True})
                 except (KeyError, TypeError, ValueError):
                     return self.send(400, {"ok": False})
+            if p.startswith("/api/trade/"):
+                tr, act, st = t.trader, p.rsplit("/", 1)[1], acc.users()[uid]["settings"]
+                pw = str(b.get("password", ""))[:200]
+                if act in ("create", "import"):
+                    pub, err = tr.create(uid, pw) if act == "create" else tr.import_key(uid, str(b.get("secret", ""))[:300], pw)
+                    if pub and not t.wallets.address(uid):         # also the portfolio wallet (journal, friends)
+                        t.wallets.set_address(uid, pub)
+                        t.refresh_uwallets()
+                    return self.send(200 if pub else 400, {"ok": bool(pub), "wallet": pub, "error": err})
+                if act == "unlock":
+                    ok, err = tr.unlock(uid, pw, st.get("trade_lock_h", 8))
+                    return self.send(200 if ok else 400, {"ok": ok, "error": err})
+                if act == "lock":
+                    tr.lock_now(uid)
+                    return self.send(200, {"ok": True})
+                if act == "export":
+                    sec, err = tr.export(uid, pw)
+                    return self.send(200 if sec else 400, {"ok": bool(sec), "secret": sec, "error": err})
+                if act == "delete":
+                    ok, err = tr.delete(uid, pw)
+                    return self.send(200 if ok else 400, {"ok": ok, "error": err})
+                if act == "portfolio":                              # use the trading wallet as the portfolio wallet
+                    pub = tr.pubkey(uid)
+                    ok = bool(pub) and t.wallets.set_address(uid, pub)
+                    t.refresh_uwallets()
+                    return self.send(200, {"ok": ok})
+                mint = str(b.get("mint", ""))[:64]
+                side = b.get("side") if b.get("side") in ("buy", "sell") else None
+                try:
+                    amount = float(b.get("amount"))
+                except (TypeError, ValueError):
+                    amount = 0.0
+                if not mint or not side or not 0 < amount <= (100 if side == "sell" else 1000):
+                    return self.send(400, {"ok": False, "error": "bad order"})
+                if act == "prepare":
+                    return self.send(200, tr.prepare(uid, mint, side, amount, st))
+                if act == "execute":
+                    with t.lock:
+                        c = t.coins.get(mint)
+                        sym = c.sym if c else None
+                    sym = sym or (t.wallets.token_info([mint]).get(mint) or (None, None, None))[2] or mint[:4]
+                    out = tr.execute(uid, mint, sym, side, amount, st)
+                    if out.get("ok"):
+                        log(f"TRADE user {uid} {side} {amount:g}{' SOL' if side == 'buy' else ' %'} {sym} {mint} "
+                            f"sent in {out['ms']} ms{' (prepared)' if out['prepared'] else ''}")
+                    return self.send(200 if out.get("ok") else 400, out)
+                return self.send(400, {"ok": False, "error": "bad request"})
             if p.startswith("/api/social/"):
                 so, act = t.social, p.rsplit("/", 1)[1]
                 fid = b.get("uid")
@@ -1861,7 +1919,9 @@ def main():
         show_dd=a.show_dd, dd_min=a.dd_min, dd_max=a.dd_max, bounce=a.bounce, pullback=a.pullback,
         alert_new=True, alert_entry=True, alert_watch=True, alert_danger=True, alert_grad=True, alert_track=True, ntfy_topic="", quiet_from=-1, quiet_to=-1, tz_min=0,
         sound="chime", card_view="cards", daily_hour=-1, font_scale=1.0, display_name="",
-        bg="#07080c", panel="#0f1117", text="#e9ecf5", accent="#526fff", radar_mode="radar", cp_layout="")
+        bg="#07080c", panel="#0f1117", text="#e9ecf5", accent="#526fff", radar_mode="radar", cp_layout="",
+        trade_buy_sol=0.1, trade_presets="0.05,0.1,0.25,0.5", trade_sell_presets="25,50,100", trade_slippage=15.0,
+        trade_prio_sol=0.0005, trade_max_sol=1.0, trade_lock_h=8.0, trade_dblclick=True, trade_quickbtn=True)
     acc = A.Accounts(os.path.join(R.DATA, "users.db"), os.path.join(R.DATA, "secret.key"), MAIL_FILE, defaults,
                      prefs_file=PREFS_FILE, owner_topic=os.environ.get("SWEDEN_NTFY_TOPIC", ""))
     t = Terminal(a, acc)
@@ -1873,6 +1933,8 @@ def main():
     t.refresh_uwallets()
     kf = os.environ.get("SWEDEN_MEMBERFEED_KEY_FILE") or HELIUS_KEY_FILE
     key = open(kf).read().strip() if os.path.exists(kf) else ""
+    t.trader = TR.Trader(os.path.join(R.DATA, "trade.db"), open(HELIUS_KEY_FILE).read().strip() if os.path.exists(HELIUS_KEY_FILE) else "",
+                         on_rpc=lambda: t.repair_calls.append(time.time()))
     t.mfeed = MF.MemberFeed(key, lambda: set(t.uwallets), t.member_record, on_rpc=lambda: t.repair_calls.append(time.time()))
     for target in (t.loop, t.meta_worker, t.price_worker, t.link_worker, t.wallets.worker, t.daily_worker, t.smart_worker,
                    t.repair_worker, t.journal_worker):

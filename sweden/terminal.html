@@ -184,9 +184,10 @@
   .sec h3 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); }
   .row { display: flex; align-items: center; gap: 10px; padding: 6px 0; font-size: 14px; }
   .row label { flex: 1; } .row small { display: block; color: var(--faint); font-size: 11px; }
-  .row input[type=number], .row input[type=text], .row select { width: 120px; background: var(--panel2); color: var(--text);
+  .row input[type=number], .row input[type=text], .row input[type=password], .row select { width: 120px; background: var(--panel2); color: var(--text);
         border: 1px solid var(--line); border-radius: 8px; padding: 8px; font-size: 14px; }
-  .row input[type=text] { width: 170px; }
+  .row input[type=text], .row input[type=password] { width: 170px; }
+  header .iconbtn, header .tpill { white-space: nowrap; }
   .row .unit { color: var(--muted); font-size: 12px; width: 22px; }
   .row input[type=color] { width: 44px; height: 32px; border: 1px solid var(--line); border-radius: 8px; background: none; padding: 2px; }
   .row input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--blue); }
@@ -350,6 +351,28 @@
   #sigpage { position: fixed; inset: 0; z-index: 6; background: var(--bg); overflow-y: auto; display: none; }
   #friendpage { position: fixed; inset: 0; z-index: 6; background: var(--bg); overflow-y: auto; display: none; }
   #friendpage.show { display: block; }
+  .tpill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 6px 11px; font-size: 12.5px; cursor: pointer;
+           border: 1px solid var(--line); background: var(--panel2); color: var(--muted); }
+  .tpill.on { color: #fbbf24; border-color: rgba(251,191,36,.5); background: rgba(251,191,36,.08); }
+  .qbuy { background: rgba(251,191,36,.12); border: 1px solid rgba(251,191,36,.45); color: #fbbf24; border-radius: 8px; padding: 6px 9px;
+          font-weight: 700; font-size: 12.5px; cursor: pointer; white-space: nowrap; }
+  .qbuy:hover { background: rgba(251,191,36,.22); } .qbuy:active { transform: scale(.96); }
+  .card.bought { animation: boughtflash .7s ease; } @keyframes boughtflash { 0% { box-shadow: 0 0 0 3px #fbbf24; } 100% { box-shadow: none; } }
+  .tbox .trow { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+  .tbox .tb { flex: 1; min-width: 56px; border-radius: 9px; padding: 9px 6px; font-weight: 700; font-size: 13.5px; cursor: pointer; border: 1px solid; }
+  .tbox .tb.buy { background: rgba(47,227,172,.12); border-color: rgba(47,227,172,.5); color: var(--green); }
+  .tbox .tb.sell { background: rgba(255,92,122,.1); border-color: rgba(255,92,122,.45); color: var(--red); }
+  .tbox .tb:hover { filter: brightness(1.25); } .tbox .tb:active { transform: scale(.96); } .tbox .tb:disabled { opacity: .4; cursor: default; }
+  .tbox .tcustom { display: flex; gap: 6px; } .tbox .tcustom input { flex: 1; min-width: 0; background: var(--panel2); border: 1px solid var(--line);
+           border-radius: 8px; color: var(--text); padding: 8px; font-size: 14px; }
+  .tbox .tinfo { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.5; } .tbox .tinfo b { color: var(--text); }
+  .tbox .ready { color: #fbbf24; }
+  #ttoasts { position: fixed; right: 14px; bottom: 14px; z-index: 12; display: flex; flex-direction: column; gap: 8px; max-width: min(360px, calc(100vw - 28px)); }
+  #ttoasts .tt { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid #fbbf24; border-radius: 10px; padding: 9px 12px;
+                 font-size: 13px; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
+  #ttoasts .tt.ok { border-left-color: var(--green); } #ttoasts .tt.bad { border-left-color: var(--red); }
+  #ttoasts .tt small { display: block; color: var(--muted); margin-top: 2px; } #ttoasts a { color: var(--muted); }
+  @media (max-width: 720px) { #ttoasts { bottom: 76px; right: 10px; left: 10px; max-width: none; } }
   #fpmodal { position: fixed; inset: 0; z-index: 9; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; padding: 16px; }
   #fpmodal .kbox { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; width: min(440px, 100%); max-height: 90vh; overflow-y: auto; padding: 16px; }
   #fpadd { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; color: var(--text); padding: 8px 10px; font-size: 14px; }
@@ -571,6 +594,7 @@
     <div id="wchips" style="display:flex;gap:6px"></div>
     <button class="iconbtn" id="openrecent" title="Recently viewed coins"></button>
     <button class="iconbtn" id="opensignals" title="Signals: how did the recommendations do?"></button>
+    <button class="tpill" id="tpill" hidden title="Trading"></button>
     <button class="iconbtn" id="openfriends" title="Friends (F)"></button>
     <a class="iconbtn" id="openjournal" href="/journal/" title="Trading journal (J): your wallet trades, analytics, weak spots"></a>
     <button class="iconbtn" id="pasteca" title="Jump to the coin whose CA is in your clipboard (or press Ctrl+V anywhere)"></button>
@@ -592,6 +616,7 @@
 <div id="walletpage" aria-label="Portfolio"></div>
 <div id="sigpage" aria-label="Signals"></div>
 <div id="friendpage" aria-label="Friends"></div>
+<div id="ttoasts" aria-live="polite"></div>
 <div id="ax"><form id="axform" autocomplete="off">
   <b id="axtitle"></b>
   <div class="axgrid">
@@ -784,7 +809,7 @@ function lrow(c) {
     <span class="num mc"><b>${usd(c.mcap_usd)}</b><small class="red">−${pct(c.dd, 0)}</small></span>
     <span class="num hide-sm ${c.last_trade_s > 600 ? "red" : ""}">${secs(c.last_trade_s)}</span>
     <span class="hide-sm">${spark(c)}</span>
-    <span class="acts2"><button class="copy" data-copy="${esc(c.mint)}" data-big="1"><span>Copy CA</span></button>
+    <span class="acts2">${qbuyBtn(c)}<button class="copy" data-copy="${esc(c.mint)}" data-big="1"><span>Copy CA</span></button>
       <button class="iconbtn star${c.watched ? " on" : ""}" data-pref="${c.watched ? "unwatch" : "watch"}" title="Watchlist">${ic("star")}</button></span></div>`;
 }
 
@@ -813,7 +838,7 @@ function card(c) {
       <div class="name"><span>${esc(c.name)}</span><button class="mini" data-copy="${esc(c.mint)}" title="Copy CA">${ic("copy")}</button></div>
       <div class="sub"><span>$${esc(c.sym)}</span><span>age <b>${dur(c.age_min)}</b></span></div>
     </div>
-    <div class="acts">
+    <div class="acts">${qbuyBtn(c)}
       <button class="iconbtn star${c.watched ? " on" : ""}" data-pref="${c.watched ? "unwatch" : "watch"}" title="${c.watched ? "Remove from" : "Add to"} watchlist">${ic("star")}</button>
       <button class="iconbtn${c.snoozed ? " on" : ""}" data-snooze="${esc(c.mint)}" title="${c.snoozed ? "Snoozed - tap to wake it up" : "Snooze: hide for a few hours"}">💤</button>
       <button class="iconbtn" data-pref="${c.user_hidden ? "unhide" : "hide"}" title="${c.user_hidden ? "Show again" : "Hide from recommendations and alerts"}">${ic(c.user_hidden ? "show" : "hide")}</button>
@@ -1033,6 +1058,7 @@ function showCoin(mint) {
         <button class="tab" data-cptab="dev">Dev history <span class="n" id="cpdevn"></span></button></div>
         <div class="tlwrap" id="cplist"></div></div>
     </div><aside class="cp-side">
+      <div class="cp-box tbox" data-panel="trade"><h4>⚡ Trade</h4><div id="cptrade"></div></div>
       <div class="cp-box" data-panel="alert"><h4>${ic("bell")} Price / mcap alert</h4>
         <div class="seg" id="cpakind" style="display:inline-flex;margin-bottom:8px"><button data-akind="mcap" class="on">MCap</button><button data-akind="price">Price</button></div>
         <div class="axrow2"><input id="cpaval" inputmode="decimal" placeholder="e.g. 50k" autocomplete="off"><button id="cpaadd">Add</button></div>
@@ -1082,6 +1108,7 @@ function showCoin(mint) {
   $("#cpholders").onchange = (e) => { cp.showHolders = e.target.checked; cp.full = true; rebuildChart(); cpRefresh(); };
   loadLW().then(rebuildChart, () => { $("#cpchart").innerHTML = '<div class="msg">The chart library could not be loaded (no internet?)</div>'; });
   cpRefresh(); cp.timer = setInterval(cpRefresh, 3000);
+  renderTradePanel(true);
 }
 // ================= friends =================
 const FR = { me: null, byId: {}, defaults: null, data: null, loaded: 0 };
@@ -1267,10 +1294,177 @@ function bindProfileSettings() {
   });
 }
 
+// ================= trading =================
+const TRD = { st: null, quote: null, token: null, prepTimer: null, prepKey: "", busy: false };
+const solTxt = (x, d = 3) => x == null ? "–" : "◎" + (+x).toFixed(x >= 100 ? 1 : d);
+const fmtTok = (x) => x == null ? "–" : x >= 1e9 ? (x / 1e9).toFixed(2) + "B" : x >= 1e6 ? (x / 1e6).toFixed(2) + "M" : x >= 1e3 ? (x / 1e3).toFixed(1) + "K" : (+x).toFixed(2);
+async function tradeApi(act, body) {
+  try {
+    const r = await fetch("/api/trade/" + act, { method: "POST", headers: { "Content-Type": "application/json", ...AH() }, body: JSON.stringify(body || {}) });
+    return await r.json().catch(() => ({ ok: false, error: "bad answer" }));
+  } catch (e) { return { ok: false, error: "No connection" }; }
+}
+async function tradeStatus(bal = false, mint = "") {
+  try {
+    const r = await fetch(`/api/trade/status?bal=${bal ? 1 : 0}${mint ? "&mint=" + mint : ""}`, { headers: AH() });
+    if (!r.ok) return null;
+    TRD.st = await r.json();
+    if (mint && TRD.st.token) TRD.token = TRD.st.token;
+    renderTradePill();
+    return TRD.st;
+  } catch (e) { return null; }
+}
+function renderTradePill() {
+  const el = $("#tpill"), st = TRD.st;
+  if (!el) return;
+  el.hidden = !st || !st.wallet;
+  if (el.hidden) return;
+  el.classList.toggle("on", !!st.unlocked);
+  el.innerHTML = st.unlocked ? `⚡ <span>${st.sol != null ? solTxt(st.sol) : "unlocked"}</span>` : "🔒 <span>Trading</span>";
+  el.title = st.unlocked ? `Trading unlocked until ${new Date(st.until * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} - click to lock` : "Trading is locked - click to unlock";
+}
+function qbuyBtn(c) {
+  if (!state || !state.settings.trade_quickbtn || !TRD.st || !TRD.st.wallet) return "";
+  const a = +state.settings.trade_buy_sol;
+  return `<button class="qbuy" data-qbuy="${esc(c.mint)}" data-amt="${a}" title="Buy ◎${a} now (one click)">⚡ ${a}</button>`;
+}
+function unlockModal(after) {
+  if ($("#fpmodal")) $("#fpmodal").remove();
+  const m = document.createElement("div"); m.id = "fpmodal";
+  m.innerHTML = `<form class="kbox" autocomplete="off"><b style="font-size:16px">🔒 Unlock trading</b>
+    <div class="wnote" style="margin:6px 0 10px">Your trading password (not the account password). Trading stays unlocked for ${state.settings.trade_lock_h} h or until you lock it.</div>
+    <input type="password" id="tpw" placeholder="Trading password" autocomplete="current-password" style="width:100%;box-sizing:border-box;background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:9px">
+    <div id="tpwerr" class="red wnote" style="margin-top:6px"></div>
+    <div style="display:flex;justify-content:flex-end;gap:6px;margin-top:12px"><button type="button" class="iconbtn" id="tpwcancel">Cancel</button><button class="iconbtn" id="tpwok">Unlock</button></div></form>`;
+  document.body.appendChild(m);
+  $("#tpw").focus();
+  m.onclick = (e) => { if (e.target === m) m.remove(); };
+  $("#tpwcancel").onclick = () => m.remove();
+  m.querySelector("form").onsubmit = async (e) => {
+    e.preventDefault();
+    $("#tpwok").disabled = true;
+    const j = await tradeApi("unlock", { password: $("#tpw").value });
+    $("#tpwok").disabled = false;
+    if (!j.ok) { $("#tpwerr").textContent = j.error || "Not unlocked"; return; }
+    m.remove(); await tradeStatus(true, cp.mint || ""); render(); renderTradePanel(true);
+    toast("Trading unlocked"); if (after) after();
+  };
+}
+function ttoast(id, html, cls = "") {
+  let el = document.getElementById("tt" + id);
+  if (!el) { el = document.createElement("div"); el.id = "tt" + id; el.className = "tt"; $("#ttoasts").prepend(el); }
+  el.className = "tt " + cls; el.innerHTML = html;
+  clearTimeout(el._t);
+  if (cls) el._t = setTimeout(() => el.remove(), cls === "bad" ? 9000 : 6000);
+  while ($("#ttoasts").children.length > 4) $("#ttoasts").lastChild.remove();
+}
+async function placeOrder(mint, side, amount, cardEl) {
+  if (!TRD.st || !TRD.st.wallet) { toast("Set up a trading wallet first (Settings > Trading wallet)", false); openSettings(); return; }
+  if (!TRD.st.unlocked) return unlockModal(() => placeOrder(mint, side, amount, cardEl));
+  const coin = (state.coins || []).find((c) => c.mint === mint), sym = coin ? coin.sym : (cp.mint === mint && cp.data ? cp.data.info.sym : mint.slice(0, 4));
+  const tmp = "p" + Date.now();
+  const what = side === "buy" ? `Buying ${solTxt(amount, 3)} of $${esc(sym)}` : `Selling ${amount}% of $${esc(sym)}`;
+  ttoast(tmp, `⚡ ${what}…`);
+  if (cardEl) { cardEl.classList.remove("bought"); void cardEl.offsetWidth; cardEl.classList.add("bought"); }
+  const j = await tradeApi("execute", { mint, side, amount });
+  document.getElementById("tt" + tmp)?.remove();
+  if (!j.ok) { ttoast(tmp, `❌ ${what} - ${esc(j.error || "failed")}`, "bad"); if (/locked/i.test(j.error || "")) { await tradeStatus(); unlockModal(); } return; }
+  ttoast(j.id, `⚡ ${what}<small>sent in ${j.ms} ms${j.prepared ? " (prepared)" : ""} · waiting for the chain…</small>`);
+  TRD.quote = null; TRD.prepKey = "";
+  followOrder(j.id, what, j.sig, mint);
+}
+const quickBuy = (mint, amount, el) => placeOrder(mint, "buy", amount, el);
+async function followOrder(id, what, sig, mint) {
+  const link = `<a href="https://solscan.io/tx/${sig}" target="_blank" rel="noopener noreferrer">tx</a>`;
+  for (let i = 0; i < 60; i++) {
+    await new Promise((r) => setTimeout(r, 800));
+    const st = await tradeStatus(false);
+    const o = st && (st.orders || []).find((x) => x.id === id);
+    if (!o || o.status === "sent") continue;
+    if (o.status === "confirmed") {
+      const got = o.side === "buy" ? `got ${fmtTok(o.tokens)} for ${solTxt(-o.sol)}` : `got ${solTxt(o.sol)} for ${fmtTok(-o.tokens)}`;
+      ttoast(id, `✅ ${what}<small>${o.sol != null ? got + " · " : ""}${link}</small>`, "ok");
+    } else ttoast(id, `❌ ${what}<small>${esc(o.error || "failed")} · ${link}</small>`, "bad");
+    await tradeStatus(true, cp.mint === mint ? mint : "");
+    if (cp.mint === mint) renderTradePanel(true);
+    tick();
+    return;
+  }
+}
+function presets(k) { return String((state && state.settings[k]) || "").split(",").map(Number).filter((x) => x > 0); }
+async function renderTradePanel(fetchStatus) {
+  const el = $("#cptrade"); if (!el || !cp.mint) return;
+  const mint = cp.mint;
+  if (fetchStatus) await tradeStatus(true, mint);
+  const st = TRD.st;
+  if (!st || !st.wallet) { el.innerHTML = `<div class="wnote">Trade straight from here: create or import a trading wallet in Settings &gt; Trading wallet.</div><button class="iconbtn" data-tsetup="1" style="margin-top:6px">Set up trading</button>`;
+    el.querySelector("[data-tsetup]").onclick = () => openSettings(); return; }
+  if (!st.unlocked) { el.innerHTML = `<div class="wnote">Trading is locked.</div><button class="iconbtn" id="tunlock" style="margin-top:6px">🔒 Unlock trading</button>`; $("#tunlock").onclick = () => unlockModal(); return; }
+  const tok = TRD.token && TRD.token.mint === mint ? TRD.token : null, q = TRD.quote;
+  el.innerHTML = `<div class="trow">${presets("trade_presets").map((a) => `<button class="tb buy" data-tbuy="${a}">${a}</button>`).join("")}</div>
+    <div class="tcustom"><input id="tamt" inputmode="decimal" placeholder="◎ amount" autocomplete="off"><button class="tb buy" id="tbuyc" style="flex:none;padding:9px 14px">Buy</button></div>
+    <div class="trow">${presets("trade_sell_presets").map((a) => `<button class="tb sell" data-tsell="${a}" ${tok && tok.raw > 0 ? "" : "disabled"}>${a}%</button>`).join("")}</div>
+    <div class="tinfo">Wallet <b>${solTxt(st.sol)}</b> · holding <b>${tok ? fmtTok(tok.amount) : "–"}</b>
+      <br><span id="tready">${q ? `<span class="ready">⚡ ready</span>: ◎${state.settings.trade_buy_sol} → ${fmtTok(q.out_amount / 1e6)} · impact ${(q.impact * 100).toFixed(1)}% · ${esc(q.route.join(" → "))}` : "preparing the buy…"}</span>
+      <br>slippage ${state.settings.trade_slippage}% · priority ◎${state.settings.trade_prio_sol} · <a href="#" id="tlock" style="color:var(--muted)">lock</a></div>`;
+  el.querySelectorAll("[data-tbuy]").forEach((b) => { b.onclick = () => placeOrder(mint, "buy", +b.dataset.tbuy); b.onmouseenter = () => prepare(mint, "buy", +b.dataset.tbuy); });
+  el.querySelectorAll("[data-tsell]").forEach((b) => { b.onclick = () => placeOrder(mint, "sell", +b.dataset.tsell); b.onmouseenter = () => prepare(mint, "sell", +b.dataset.tsell); });
+  $("#tbuyc").onclick = () => { const a = parseFloat(($("#tamt").value || "").replace(",", ".")); if (a > 0) placeOrder(mint, "buy", a); };
+  $("#tamt").onkeydown = (e) => { if (e.key === "Enter") $("#tbuyc").click(); };
+  $("#tlock").onclick = async (e) => { e.preventDefault(); await tradeApi("lock"); await tradeStatus(); renderTradePanel(); render(); toast("Trading locked"); };
+  if (!TRD.prepTimer) {                                         // keep the one-click buy prepared while the page is open
+    const loop = () => { if (cp.mint === mint && TRD.st && TRD.st.unlocked && document.visibilityState === "visible") prepare(mint, "buy", +state.settings.trade_buy_sol); };
+    loop(); TRD.prepTimer = setInterval(loop, 5000);
+  }
+}
+async function prepare(mint, side, amount) {
+  const key = mint + side + amount;
+  if (TRD.busy && TRD.prepKey === key) return;
+  TRD.busy = true; TRD.prepKey = key;
+  const j = await tradeApi("prepare", { mint, side, amount });
+  TRD.busy = false;
+  if (cp.mint !== mint) return;
+  if (side === "buy" && amount === +state.settings.trade_buy_sol) TRD.quote = j.ok ? j.quote : null;
+  const r = $("#tready");
+  if (r && side === "buy" && amount === +state.settings.trade_buy_sol) r.innerHTML = j.ok
+    ? `<span class="ready">⚡ ready</span>: ◎${amount} → ${fmtTok(j.quote.out_amount / 1e6)} · impact ${(j.quote.impact * 100).toFixed(1)}% · ${esc(j.quote.route.join(" → "))}`
+    : `<span class="red">${esc(j.error || "not ready")}</span>`;
+}
+function tradeWalletHtml() {
+  const st = TRD.st || {};
+  const box = (inner) => `<div class="sec"><h3>Trading wallet</h3>${inner}</div>`;
+  if (!st.rpc) return box('<div class="wnote">Trading needs the Helius key on the Pi (file helius_key).</div>');
+  if (!st.wallet) return box(`<div class="wnote" style="margin-bottom:8px">A separate wallet for trading from the terminal. Its key is stored on the Pi, encrypted with a trading password only you know (it cannot be recovered - export a backup). Use it with small amounts like any hot wallet.</div>
+      <div class="row"><label for="tnewpw">Trading password<small>8+ characters, not your account password</small></label><input type="password" id="tnewpw" autocomplete="new-password"></div>
+      <div class="row"><label></label><button class="iconbtn" id="tcreate">Create a new wallet</button></div>
+      <div class="row"><label for="tsecret">…or import a secret key<small>base58 (Phantom: Export private key) or [..] array</small></label><input type="password" id="tsecret" autocomplete="off"></div>
+      <div class="row"><label></label><button class="iconbtn" id="timport">Import</button></div>`);
+  return box(`<div class="row"><label>Address<small>send SOL here to trade</small></label><button class="iconbtn" data-copy="${esc(st.wallet)}">${esc(short(st.wallet))} ${ic("copy")}</button></div>
+      <div class="row"><label>Status</label><span>${st.unlocked ? "⚡ unlocked" : "🔒 locked"} ${st.sol != null ? "· " + solTxt(st.sol) : ""}</span>
+        <button class="iconbtn" id="ttoggle">${st.unlocked ? "Lock" : "Unlock"}</button></div>
+      <div class="row"><label>Portfolio<small>show this wallet on the portfolio page, in the journal and to friends</small></label><button class="iconbtn" id="tport">Use as portfolio wallet</button></div>
+      <div class="row"><label for="tpw2">Trading password<small>for export / delete</small></label><input type="password" id="tpw2" autocomplete="off"></div>
+      <div class="row"><label></label><button class="iconbtn" id="texport">Show secret key (backup)</button><button class="iconbtn" id="tdelete" style="color:var(--red)">Delete wallet</button></div>
+      <pre id="tsecretout" style="display:none;white-space:pre-wrap;word-break:break-all;font:12px ui-monospace,monospace;background:var(--panel2);border-radius:8px;padding:8px"></pre>`);
+}
+function bindTradeSettings() {
+  const on = (id, f) => { const el = $("#" + id); if (el) el.onclick = f; };
+  const redraw = async () => { await tradeStatus(true); closeSettings(false); openSettings(); render(); };
+  on("tcreate", async () => { const j = await tradeApi("create", { password: $("#tnewpw").value }); if (!j.ok) return toast(j.error || "Not created", false); toast("Wallet created - send SOL to it, then unlock"); redraw(); });
+  on("timport", async () => { const j = await tradeApi("import", { secret: $("#tsecret").value, password: $("#tnewpw").value }); $("#tsecret").value = ""; if (!j.ok) return toast(j.error || "Not imported", false); toast("Wallet imported"); redraw(); });
+  on("ttoggle", async () => { if (TRD.st.unlocked) { await tradeApi("lock"); redraw(); } else unlockModal(redraw); });
+  on("tport", async () => { const j = await tradeApi("portfolio"); toast(j.ok ? "Portfolio wallet set" : "Not set", !!j.ok); tick(); });
+  on("texport", async () => { const j = await tradeApi("export", { password: $("#tpw2").value }); if (!j.ok) return toast(j.error || "Wrong password", false);
+    $("#tsecretout").textContent = j.secret + "\n\nAnyone with this key controls the wallet. Store it offline; never paste it in a chat."; $("#tsecretout").style.display = "block"; });
+  on("tdelete", async () => { if (!confirm("Delete the trading wallet from the Pi? Export the key first if it still holds anything.")) return;
+    const j = await tradeApi("delete", { password: $("#tpw2").value }); if (!j.ok) return toast(j.error || "Not deleted", false); toast("Trading wallet deleted"); redraw(); });
+}
+setInterval(() => { if (userToken) tradeStatus(!!(TRD.st && TRD.st.unlocked)); }, 30000);
+
 // ================= coin page layout (per account) =================
-const PANELS = { kpis: "Key numbers", chart: "Chart", lists: "Trades / traders / holders", alert: "Price / mcap alert", calc: "Trade calculator",
+const PANELS = { trade: "Trade", kpis: "Key numbers", chart: "Chart", lists: "Trades / traders / holders", alert: "Price / mcap alert", calc: "Trade calculator",
                  note: "Your note", mine: "Your position", friends: "Friends", pressure: "Buy / sell pressure", info: "Token info", links: "Links" };
-const DEFAULT_LAYOUT = { main: ["kpis", "chart", "lists"], side: ["alert", "calc", "note", "mine", "friends", "pressure", "info", "links"] };
+const DEFAULT_LAYOUT = { main: ["kpis", "chart", "lists"], side: ["trade", "alert", "calc", "note", "mine", "friends", "pressure", "info", "links"] };
 function savedLayout() {
   try { const l = JSON.parse((state && state.settings && state.settings.cp_layout) || ""); if (l && l.main && l.side) return l; } catch (e) {}
   return DEFAULT_LAYOUT;
@@ -1282,7 +1476,10 @@ function applyCoinLayout(lay) {
   const all = {}; document.querySelectorAll("#coinpage [data-panel]").forEach((p) => all[p.dataset.panel] = p);
   const put = (col, ids) => ids.forEach((id) => { if (all[id]) { col.appendChild(all[id]); delete all[id]; } });
   put(main, lay.main); put(side, lay.side);
-  for (const id of Object.keys(all)) (DEFAULT_LAYOUT.main.includes(id) ? main : side).appendChild(all[id]);   // panels added later
+  for (const id of Object.keys(all)) {                         // panels added after the layout was saved
+    const col = DEFAULT_LAYOUT.main.includes(id) ? main : side;
+    if (id === "trade") col.prepend(all[id]); else col.appendChild(all[id]);
+  }
   const hs = lay.h || {};
   document.querySelectorAll("#coinpage [data-panel]").forEach((p) => setPanelHeight(p, hs[p.dataset.panel]));
   const body = document.querySelector("#coinpage .cp-body");
@@ -1385,6 +1582,7 @@ async function saveCoinLayout(value) {
 
 function hideCoin(keepPage) {
   if (cp.editing) lockCoinLayout(false);
+  clearInterval(TRD.prepTimer); TRD.prepTimer = null; TRD.quote = null; TRD.token = null;
   clearInterval(cp.timer); cp.timer = null;
   if (cp.chart) { cp.chart.remove(); cp.chart = null; cp.cs = cp.vs = null; }
   cp.mint = null;
@@ -2238,6 +2436,15 @@ $("#accresend").onclick = async () => {
 // ---------- settings ----------
 const PCT = ["bundle_max", "top10_max", "sniper_max", "dev_max", "show_dd", "dd_min", "dd_max", "bounce", "pullback"];
 const FIELDS = [
+  ["Trading", [["trade_buy_sol", "One-click buy (double-click, ⚡ button)", "number", "SOL per buy", "SOL"],
+               ["trade_presets", "Buy buttons on the coin page", "text", "SOL amounts, comma separated (up to 6)"],
+               ["trade_sell_presets", "Sell buttons", "text", "% of the holding, comma separated"],
+               ["trade_slippage", "Slippage", "number", "a trade fails instead of filling worse than this", "%"],
+               ["trade_prio_sol", "Priority fee", "number", "per transaction - higher lands faster when the network is busy", "SOL"],
+               ["trade_max_sol", "Limit per click", "number", "buys above this are refused (fat-finger guard)", "SOL"],
+               ["trade_lock_h", "Stay unlocked for", "number", "then the trading password is needed again", "h"],
+               ["trade_dblclick", "Double-click a coin card to buy", "bool", "the one-click amount, no confirmation"],
+               ["trade_quickbtn", "⚡ buy button on coin cards", "bool"]]],
   ["Alerts", [["ntfy_topic", "ntfy topic", "text", "Your own topic in the ntfy app (letters, digits, - and _)"],
               ["alert_new", "Alert: new coin to check", "bool"], ["alert_entry", "Alert: entry signal", "bool"],
               ["alert_watch", "Alerts for watchlist coins outside the filter", "bool", "new / entry alerts for starred coins that don't pass your filter"],
@@ -2298,6 +2505,7 @@ function settingsHtml(st) {
       <div class="row"><label>Daily summary<small>what the daily push would say right now</small></label><button class="iconbtn" id="sdaily">Preview</button></div>
       <div class="row"><label>Coin page layout<small>${st.cp_layout ? "your own arrangement (unlock it with the lock on a coin page)" : "default - rearrange it with the lock on a coin page"}</small></label><button class="iconbtn" id="slayoutreset"${st.cp_layout ? "" : " disabled"}>Reset</button></div>
       <pre id="sdailyout" style="display:none;white-space:pre-wrap;font:12px/1.4 ui-monospace,monospace;color:var(--muted);background:var(--panel2);border-radius:8px;padding:8px;margin:4px 0 0"></pre></div>` +
+    tradeWalletHtml() +
     FIELDS.map(([t, rows]) => `<div class="sec"><h3>${t}</h3>${rows.map(row).join("")}</div>`).join("") +
     `<div class="sec"><h3>Tracked wallets</h3><div class="wnote" style="margin-bottom:6px">Get an alert when one of these wallets buys or sells a coin the terminal tracks; their name shows in the coin page's trades and holders.</div>
       <div id="trklist">${Object.entries(state.tracked || {}).map(([w, l]) => `<div class="row"><label>${esc(l)}<small>${esc(short(w))}</small></label><button class="iconbtn" data-untrack="${esc(w)}">✕</button></div>`).join("") || '<div class="wnote">No wallet yet.</div>'}</div>
@@ -2338,6 +2546,7 @@ function openSettings(st) {
   $("#sbody").innerHTML = settingsHtml(draft);
   $("#settings").classList.add("show");
   $("#stest").onclick = () => $("#testpush").click();
+  bindTradeSettings();
   $("#slayoutreset").onclick = async () => { await saveCoinLayout(""); draft.cp_layout = ""; $("#slayoutreset").disabled = true; if (cp.mint) applyCoinLayout(DEFAULT_LAYOUT), rebuildChart(); };
   bindProfileSettings();
   const trk = async (wallet, label, on) => {
@@ -2410,7 +2619,7 @@ $("#sreset").onclick = () => {                              // the starting sett
 let tickSeq = 0;
 let frTimer = null;
 async function tick() {
-  if (!frTimer && userToken) { frTimer = setInterval(loadFriends, 60000); loadFriends(); }
+  if (!frTimer && userToken) { frTimer = setInterval(loadFriends, 60000); loadFriends(); tradeStatus(true).then(() => render()); }
   if (!token) return showLogin();
   if (!userToken) return showAccount();
   const all = NEEDS_ALL.includes(tab), my = ++tickSeq;
@@ -2465,7 +2674,16 @@ async function setPref(mint, action) {
 }
 
 let axMint = null;
+document.addEventListener("dblclick", (e) => {
+  if (!state || !state.settings.trade_dblclick || !TRD.st || !TRD.st.wallet) return;
+  const card = e.target.closest(".card[data-mint], .lrow[data-mint]");
+  if (!card || e.target.closest("button, a, input, textarea, select, [data-open], [data-copy], .spark, details")) return;
+  e.preventDefault(); window.getSelection && window.getSelection().removeAllRanges();
+  quickBuy(card.dataset.mint, +state.settings.trade_buy_sol, card);
+});
 document.addEventListener("click", (e) => {
+  const qb = e.target.closest("[data-qbuy]");
+  if (qb) { e.stopPropagation(); quickBuy(qb.dataset.qbuy, +qb.dataset.amt, qb.closest("[data-mint]")); return; }
   const t = e.target.closest("[data-tab]");
   if (t) { tab = t.dataset.tab; try { localStorage.setItem("swedenTab", tab); } catch (e) {} render(); tick(); return; }
   if (e.target.closest("[data-cphide]")) { hideAndLeave(); return; }
@@ -2521,6 +2739,7 @@ $("#opensignals").onclick = () => { location.hash = "#signals"; };
 $("#openjournal").innerHTML = ic("book") + "<span>Journal</span>";
 $("#openfriends").innerHTML = ic("users") + "<span>Friends</span>";
 $("#openfriends").onclick = () => { location.hash = "#friends"; };
+$("#tpill").onclick = async () => { if (TRD.st && TRD.st.unlocked) { await tradeApi("lock"); await tradeStatus(); render(); if (cp.mint) renderTradePanel(); toast("Trading locked"); } else unlockModal(); };
 $("#openrecent").innerHTML = ic("clock"); $("#openrecent").onclick = showRecent;
 $("#q").addEventListener("input", (e) => { query = e.target.value.trim().toLowerCase(); $("#search").classList.toggle("has", !!query); render(); });
 $("#qclear").onclick = () => { $("#q").value = ""; query = ""; $("#search").classList.remove("has"); render(); $("#q").focus(); };
