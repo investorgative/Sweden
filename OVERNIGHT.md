@@ -21,6 +21,16 @@ To deploy (after your OK): merge the branch into `~/sweden`, restart only the te
    for seconds). Now the background worker keeps the price cache warm; page updates read it (state ~9 ms, portfolio
    ~70 ms with a 655-position wallet).
 6. The portfolio page threw an error when closed while an update was still loading. Fixed.
+7. **Phones showed the whole page shrunk**: the header was 428 px wide on a 390 px screen, so the phone zoomed the page
+   out (everything ~12 % smaller and narrower). Now the header fits (status text hidden, settings / lock in the bottom
+   bar), the page uses the full width.
+
+## Checked visually this time
+Headless Chromium works on the Pi after all (it was hanging on the missing D-Bus). I took real screenshots of every
+page at phone and PC size and fixed what looked wrong: the phone width above, the cramped coin-page header on phones,
+the list view on phones, the candle chart starting squeezed at the right (now shows the whole life first), a negative
+value on the chart scale, the volume label, the trade calculator's wrapping labels. The real TradingView chart renders
+fine. (Emoji show as boxes on the Pi only - it has no emoji font; phones / PCs show them.)
 
 ## New features
 

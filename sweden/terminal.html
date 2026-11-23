@@ -19,6 +19,8 @@
   }
   * { box-sizing: border-box; }
   html { -webkit-text-size-adjust: 100%; }
+  html, body { overflow-x: hidden; }
+  .bar { min-width: 0; }
   body { margin: 0; min-height: 100vh;
          background: radial-gradient(1100px 420px at 50% -180px, color-mix(in srgb, var(--blue) 11%, transparent), transparent 70%), var(--bg); color: var(--text); font: 14px/1.35 Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
   button { font: inherit; color: inherit; cursor: pointer; }
@@ -265,6 +267,14 @@
   .chartbox .clabel.tr { pointer-events: none; }
   #flash.gold { background: radial-gradient(ellipse at center, rgba(245,194,73,.06) 30%, rgba(245,194,73,.42) 100%);
                 box-shadow: inset 0 0 120px 30px rgba(245,194,73,.55); }
+  @media (max-width: 720px) {
+    .cp-top { gap: 6px; padding: 8px 12px; }
+    .cp-top .sub { flex-wrap: nowrap; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+    .cp-top .sub span { margin-right: 8px; }
+    .cp-top [data-pastebtn], .cp-top #cpshare { display: none; }
+    .cp-top .img { width: 34px; height: 34px; }
+    .cp-top a.axiom { padding: 6px 8px; }
+  }
   @media (max-width: 900px) {
     .cp-body { grid-template-columns: minmax(0, 1fr); }
     .cp-kpis { grid-template-columns: repeat(3, 1fr); }
@@ -302,7 +312,13 @@
   .cal .d.today { outline: 1px solid var(--blue); }
   @media (max-width: 900px) { .wstats { grid-template-columns: 1fr; } }
   @media (max-width: 900px) { .wp-kpis { grid-template-columns: repeat(2, 1fr); } #wchart { height: 240px; } }
-  @media (max-width: 480px) { .wchip small { display: none; } }
+  @media (max-width: 480px) {
+    .status #status { display: none; }                       /* the live dot stays */
+    .bar { gap: 6px; overflow: hidden; }
+    .wchip { padding: 6px 8px; font-size: 12px; }
+    #sound span, #opensettings span { display: none; }
+    #opensettings, #lock { display: none; }                  /* settings are in the bottom bar (log out / lock there) */
+  }
 
   /* signals page */
   #sigpage { position: fixed; inset: 0; z-index: 6; background: var(--bg); overflow-y: auto; display: none; }
@@ -399,17 +415,19 @@
   #cpnote { width: 100%; min-height: 70px; resize: vertical; background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 8px;
             padding: 8px; font: inherit; font-size: 13px; }
   /* compact list view */
-  .lrow { display: grid; grid-template-columns: 34px minmax(90px, 1.4fr) 92px 80px 70px 60px minmax(80px, 1fr) auto; gap: 10px; align-items: center;
+  .lrow { display: grid; grid-template-columns: 34px minmax(120px, 1.6fr) 90px 60px minmax(80px, 1fr) auto; gap: 10px; align-items: center;
           background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 7px 10px; grid-column: 1 / -1; min-width: 0; }
   .lrow.stage-entry { border-color: rgba(47,227,172,.55); } .lrow.watched { border-color: rgba(245,194,73,.45); } .lrow.filtered { opacity: .6; }
   .lrow .img { width: 34px; height: 34px; border-radius: 8px; }
   .lrow .nm { min-width: 0; } .lrow .nm b { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .lrow .nm small { color: var(--muted); font-size: 11px; }
+  .lrow .nm small { color: var(--muted); font-size: 11px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lrow .mc { display: flex; flex-direction: column; align-items: flex-end; } .lrow .mc small { font-size: 11px; }
   .lrow svg { width: 100%; height: 30px; display: block; cursor: zoom-in; }
   .lrow .acts2 { display: flex; gap: 6px; align-items: center; }
   .lrow .acts2 .copy { padding: 8px 12px; font-size: 13px; width: auto; }
   .grid.listv { grid-template-columns: 1fr; gap: 6px; }
-  @media (max-width: 720px) { .lrow { grid-template-columns: 30px minmax(70px, 1fr) 70px auto; } .lrow .hide-sm { display: none; } }
+  @media (max-width: 720px) { .lrow { grid-template-columns: 30px minmax(0, 1fr) auto auto; gap: 8px; padding: 7px 8px; } .lrow .hide-sm { display: none; }
+    .lrow .img { width: 30px; height: 30px; } .lrow .acts2 .star { display: none; } }
 
   .copy { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; background: var(--blue); color: #fff;
           border: 0; border-radius: 10px; padding: 13px; font-weight: 800; font-size: 16px; }
@@ -705,9 +723,8 @@ function lrow(c) {
   const fresh = cardsReady && !cardsSeen.has(c.mint); cardsSeen.add(c.mint);
   return `<div class="lrow stage-${c.stage}${c.watched ? " watched" : ""}${c.visible ? "" : " filtered"}${fresh ? " enter" : ""}${c.mint === focusMint ? " focus" : ""}" data-mint="${esc(c.mint)}">
     ${img ? `<img class="img" src="${esc(img)}" loading="lazy" referrerpolicy="no-referrer" alt="" data-open="${esc(c.mint)}">` : `<div class="img" data-open="${esc(c.mint)}"></div>`}
-    <div class="nm" data-open="${esc(c.mint)}" style="cursor:pointer"><b>${esc(c.name)}</b><small>$${esc(c.sym)} · ${dur(c.age_min)}${c.note && c.note.tag ? " · " + NOTE_TAGS[c.note.tag] : ""}${c.mine && c.mine.amount > 0 ? " · ◎ held" : ""}</small></div>
-    <span><span class="badge b-${c.stage}">${LABEL[c.stage]}</span></span>
-    <span class="num"><b>${usd(c.mcap_usd)}</b></span><span class="num red">−${pct(c.dd, 0)}</span>
+    <div class="nm" data-open="${esc(c.mint)}" style="cursor:pointer"><b>${esc(c.name)}</b><small><span class="stg" style="color:var(--${c.stage})">● ${LABEL[c.stage]}</span> · $${esc(c.sym)} · ${dur(c.age_min)}${c.note && c.note.tag ? " · " + NOTE_TAGS[c.note.tag] : ""}${c.mine && c.mine.amount > 0 ? " · ◎ held" : ""}</small></div>
+    <span class="num mc"><b>${usd(c.mcap_usd)}</b><small class="red">−${pct(c.dd, 0)}</small></span>
     <span class="num hide-sm ${c.last_trade_s > 600 ? "red" : ""}">${secs(c.last_trade_s)}</span>
     <span class="hide-sm">${spark(c)}</span>
     <span class="acts2"><button class="copy" data-copy="${esc(c.mint)}" data-big="1"><span>Copy CA</span></button>
@@ -892,6 +909,7 @@ function loadLW() {
 const TZO = -new Date().getTimezoneOffset() * 60;           // the chart library shows UTC; shift to local time
 const unitF = () => cp.mode === "mcap" ? (cp.data?.sol_usd || state?.sol_usd || 0) : (cp.data?.sol_usd || state?.sol_usd || 0) / 1e9;
 function fmtVal(v) {
+  if (v <= 0) return "$0";
   if (cp.mode === "mcap") return usd(v);
   if (!v) return "$0";
   return "$" + (v >= 1 ? v.toFixed(4) : v.toPrecision(3));
@@ -1018,8 +1036,9 @@ function rebuildChart() {
     rightPriceScale: { borderColor: v("--line") }, crosshair: { mode: 0 },
     localization: { priceFormatter: fmtVal } });
   cp.cs = chart.addCandlestickSeries({ upColor: v("--green"), downColor: v("--red"), borderVisible: false, wickUpColor: v("--green"),
-    wickDownColor: v("--red"), priceFormat: { type: "custom", formatter: fmtVal, minMove: 1e-12 } });
-  cp.vs = chart.addHistogramSeries({ priceFormat: { type: "volume" }, priceScaleId: "" });
+    wickDownColor: v("--red"), priceFormat: { type: "custom", formatter: fmtVal, minMove: 1e-12 },
+    autoscaleInfoProvider: (orig) => { const r = orig(); if (r && r.priceRange) r.priceRange.minValue = Math.max(0, r.priceRange.minValue); return r; } });
+  cp.vs = chart.addHistogramSeries({ priceFormat: { type: "volume" }, priceScaleId: "", lastValueVisible: false, priceLineVisible: false });
   cp.vs.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
   cp.hs = cp.showHolders ? chart.addLineSeries({ color: v("--yellow"), lineWidth: 1, priceScaleId: "left", priceLineVisible: false, lastValueVisible: true }) : null;
   if (cp.hs) chart.applyOptions({ leftPriceScale: { visible: true, borderColor: v("--line") } });
@@ -1038,7 +1057,9 @@ function drawCandles(d) {
     cp.hs.setData(hh);
   }
   if (cp.full || cp.lastT === null) {
+    const first = cp.lastT === null;
     cp.cs.setData(bars); cp.vs.setData(vols); cp.full = false; cp.markKey = "";
+    if (first && cp.chart) cp.chart.timeScale().fitContent();      // show the coin's whole life first
   } else {
     for (let i = 0; i < bars.length; i++) if (bars[i].time >= cp.lastT) { cp.cs.update(bars[i]); cp.vs.update(vols[i]); }
   }
@@ -1167,10 +1188,11 @@ function renderCalc() {                                      // buy now and sell
   const back = Q2 * tok / (B2 + tok) * (1 - fee);                                   // selling right away
   const avgMc = s / tok * 1e15 / 1e9 * usdP;                                        // average fill as mcap (1e15 raw = supply)
   const rt = (back / 1e9 - 2 * txc) / solIn - 1;
-  out.innerHTML = [["You get", `${(tok / 1e6).toLocaleString(undefined, { maximumFractionDigits: 0 })} tokens · ${pct(tok / 1e15, 2)} of supply`],
-    ["Average fill (mcap)", `${usd(avgMc)} <small class="muted">now ${usd(i.mcap_usd)}</small>`],
-    ["Price impact", pctTxt(avgMc / i.mcap_usd - 1, 1)], ["Sell right back", `${pctTxt(rt, 1)} <small class="muted">fees ${(fee * 100).toFixed(2)}% ×2 + network fees (the slippage cancels out)</small>`],
-    ["Break-even mcap", `≈ ${usd(i.mcap_usd / (1 + rt))}`]].map(([k, v]) => `<span>${k}</span><b>${v}</b>`).join("");
+  out.innerHTML = [["You get", `${(tok / 1e6).toLocaleString(undefined, { maximumFractionDigits: 0 })} · ${pct(tok / 1e15, 2)}`],
+    ["Avg fill", `${usd(avgMc)} <small class="muted">now ${usd(i.mcap_usd)}</small>`],
+    ["Impact", pctTxt(avgMc / i.mcap_usd - 1, 1)],
+    ["Sell back now", `<span title="fees ${(fee * 100).toFixed(2)}% on the buy and on the sell + network fees; the slippage cancels out">${pctTxt(rt, 1)}</span>`],
+    ["Break-even", `≈ ${usd(i.mcap_usd / (1 + rt))}`]].map(([k, v]) => `<span>${k}</span><b>${v}</b>`).join("");
 }
 const tagHtml = (t) => (t || []).map((x) => `<span class="tag ${x}">${x === "bundler" ? "bundle" : x === "toppnl" ? "top pnl" : x}</span>`).join("");
 const wLink = (w, label) => `<a href="https://solscan.io/account/${esc(w)}" target="_blank" rel="noopener noreferrer">${esc(short(w))}</a>${label ? ` <span class="tag top10" title="your tracked wallet">👁 ${esc(label)}</span>` : ""}`;
