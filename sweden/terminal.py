@@ -44,8 +44,8 @@ HISTORY_S = 72 * 3600                    # creator history (24 h) and copied nam
 AXIOM_FILE = os.path.join(R.DATA, "axiom_checks.jsonl")
 PREFS_FILE = os.path.join(R.DATA, "terminal_prefs.json")
 PASSKEY_FILE = os.path.join(HERE, "..", "terminal_passkey")
-MAIL_FILE = os.path.join(HERE, "..", "gmail.json")
-TUNNEL_LOG = os.path.join(HERE, "..", "logs", "tunnel.log")
+MAIL_FILE = os.environ.get("SWEDEN_MAIL_FILE") or os.path.join(HERE, "..", "gmail.json")   # tests: SWEDEN_MAIL_FILE=none
+TUNNEL_LOG = os.environ.get("SWEDEN_TUNNEL_LOG") or os.path.join(HERE, "..", "logs", "tunnel.log")   # tests: =none
 LAST_LINK = os.path.join(R.DATA, "last_link.txt")
 TOKEN_DAYS = 30
 COPY_MATCHES = 6                         # earlier same-name coins kept per copied coin
@@ -209,6 +209,8 @@ class Coin:
         self.pool = None
         self.copy_of = []                           # (mint, launch ts, why) of earlier graduated coins it copies
         self.last_trade = None
+        self.trades = []                            # (slot, seq, ts, mcap SOL, SOL lamports, buy, wallet, tokens, pool?)
+        self.liq_sol = None                         # real SOL in the curve / pool after the latest trade
 
 
 def chart(c, now, n=90):
@@ -299,6 +301,7 @@ class Terminal:
         self.meta_q = queue.Queue()
         self.started = time.time()
         self.events = 0
+        self.seq = 0
 
     # ---------- data ----------
     def files(self):
@@ -346,6 +349,13 @@ class Terminal:
             c.H.trade(r[0], r[5], r[6], r[8], True)
             if c.S is not None:
                 c.S.apply(r[0], r)
+            if r[10] > 0:
+                self.seq += 1
+                mc = r[9] / r[10] * 1e6                 # reserves after the trade -> mcap in SOL
+                c.trades.append((r[0], self.seq, r[3], mc, r[7], r[6], r[5], r[8], False))
+                if r[0] >= c.last_slot:
+                    c.liq_sol = (r[9] - c.c["vsol0"]) / 1e9
+                self.check_px(c, mc)
         elif kind == "G":
             if c.S is not None:
                 c.feat = c.S.features()
@@ -367,7 +377,12 @@ class Terminal:
             B = pb - base if buy else pb + base     # event reserves are pre-trade
             Q = (pq + quote if buy else pq - quote) + vq
             if B > 0 and Q > 0:
+                self.seq += 1
+                c.trades.append((r[0], self.seq, r[3], Q / B * 1e6, quote, buy, r[5], base, True))
+                if r[0] >= c.last_slot:
+                    c.liq_sol = (pq + quote if buy else pq - quote) / 1e9
                 self.price_update(c, Q / B, r[3], r[0])
+                self.check_px(c, Q / B * 1e6)
 
     def price_update(self, c, p, ts, slot):
         b = c.pts.get(ts // 5)                          # swaps arrive over several connections, not in order
@@ -420,6 +435,22 @@ class Terminal:
                 st.entries, st.armed = st.entries + 1, False
                 if s["alert_entry"]:
                     self.alert(c, uid, "entry", f"{c.sym}: ENTRY - bounced and pulled back {self.mcap_text(c)}")
+
+    def check_px(self, c, mcap_sol):
+        """Fire the price / mcap alerts set on this coin (one-shot)."""
+        alerts = self.acc.px.get(c.mint)
+        if not alerts or not self.live or not self.usd:
+            return
+        mc = mcap_sol * self.usd
+        for a in list(alerts):
+            v = mc if a["kind"] == "mcap" else mc / 1e9
+            if (a["op"] == ">=" and v >= a["value"]) or (a["op"] == "<=" and v <= a["value"]):
+                if a["uid"] not in self.acc.users():
+                    continue
+                self.acc.px_delete(a["uid"], a["id"])
+                what = f"mcap {'above' if a['op'] == '>=' else 'below'} {usd_text(a['value'])}" if a["kind"] == "mcap" else \
+                    f"price {'above' if a['op'] == '>=' else 'below'} ${a['value']:.10g}"
+                self.alert(c, a["uid"], "px", f"{c.sym}: {what} (mcap now {usd_text(mc)})")
 
     def mcap_usd(self, c):
         return (c.price or 0) * 1e6 * self.usd
@@ -475,8 +506,9 @@ class Terminal:
         try:
             req = urllib.request.Request(f"https://ntfy.sh/{urllib.parse.quote(topic)}",
                                          data=(text + ("\n" + c.mint if c else "")).encode(),
-                                         headers={"Title": "Sweden: " + {"entry": "ENTRY", "new": "new coin"}.get(kind, kind),
-                                                  "Priority": "high" if kind == "entry" else "default",
+                                         headers={"Title": "Sweden: " + {"entry": "ENTRY", "new": "new coin",
+                                                                          "px": "price alert"}.get(kind, kind),
+                                                  "Priority": "high" if kind in ("entry", "px") else "default",
                                                   **({"Click": f"https://axiom.trade/meme/{c.pool or c.mint}?chain=sol"} if c else {})})
             urllib.request.urlopen(req, timeout=10).read()
             return True
@@ -634,6 +666,83 @@ class Terminal:
         self.orig_cache[mint] = (time.time(), out)
         return out
 
+    def wallet_tags(self, c, top10):
+        H = c.H
+        def tags(w):
+            out = []
+            if w in H.devs:
+                out.append("dev")
+            f = H.first.get(w)
+            if f == H.L:
+                out.append("bundler")
+            elif f is not None and 0 < f - H.L <= 3:
+                out.append("sniper")
+            if w in top10:
+                out.append("top10")
+            return out
+        return tags
+
+    def detail(self, mint, uid):
+        """Everything for the coin page: info, latest trades with wallet tags, top holders, this user's alerts."""
+        now = time.time()
+        with self.lock:
+            c = self.coins.get(mint)
+            if c is None:
+                return dict(found=False)
+            held = sorted(((w, t) for w, t in c.H.hold.items() if t > 0), key=lambda x: -x[1])
+            top10 = {w for w, _ in held[:10]}
+            tags = self.wallet_tags(c, top10)
+            tr = sorted(c.trades, key=lambda x: (x[0], x[1]))
+            usd = self.usd
+            def window(sec):
+                xs = [x for x in tr if x[2] >= now - sec]
+                return dict(vol=sum(x[4] for x in xs) / 1e9 * usd, buys=sum(1 for x in xs if x[5]),
+                            sells=sum(1 for x in xs if not x[5]), makers=len({x[6] for x in xs}))
+            last_mc = tr[-1][3] if tr else c.c["vsol0"] / c.c["vtok0"] * 1e6
+            f = c.feat or {}
+            u = self.acc.users()[uid]
+            vis, why = self.visible(c, uid)
+            st = c.ust.get(uid)
+            info = dict(
+                found=True, mint=mint, name=c.name, sym=c.sym, pool=c.pool, creator=c.c["creator"], meta=c.meta or {},
+                age_min=(now - c.ts) / 60, graduated=c.grad_ts is not None and c.pool_ok,
+                grad_min=(now - c.grad_ts) / 60 if c.grad_ts else None, mayhem=bool(c.flag),
+                mcap_usd=last_mc * usd, ath_usd=max((x[3] for x in tr), default=last_mc) * usd,
+                liq_usd=(c.liq_sol or 0) * usd * (2 if c.pool_ok else 1), liq_sol=c.liq_sol,
+                w5m=window(300), w1h=window(3600), w6h=window(21600), trades_total=len(tr),
+                live=c.H.metrics(), copy_of=len(c.copy_of), stage=st.stage if st else "top", visible=vis, hidden=why,
+                watched=mint in u["watch"], user_hidden=mint in u["hide"],
+                checks=dict(top10=f.get("top10_pct"), bundle=f.get("bundle_pct"), snipers=f.get("sniper_pct"),
+                            prior=f.get("prior_launches"), dev_sold=f.get("dev_sold"), traders=f.get("traders"),
+                            top3_trades=f.get("top3_trade_share"), same_sizes=f.get("same_size_share")))
+            trades = [dict(ts=x[2], buy=x[5], sol=x[4] / 1e9, usd=x[4] / 1e9 * usd, tokens=x[7], mcap_usd=x[3] * usd,
+                           wallet=x[6], pool=x[8], tags=tags(x[6])) for x in reversed(tr[-100:])]
+            holders = [dict(wallet=w, share=t / R.SUPPLY, tags=tags(w)) for w, t in held[:20]]
+        return dict(info=info, trades=trades, holders=holders, sol_usd=self.usd,
+                    alerts=[a for a in self.acc.px_list(uid) if a["mint"] == mint])
+
+    def candles(self, mint, tf):
+        """OHLC of the market cap (SOL) per `tf` seconds over the coin's whole life (curve and PumpSwap), last 1500."""
+        with self.lock:
+            c = self.coins.get(mint)
+            if c is None:
+                return dict(found=False)
+            tr = sorted(c.trades, key=lambda x: (x[0], x[1]))
+            grad = c.grad_ts
+        out, cur = [], None
+        for x in tr:
+            t = int(x[2] // tf * tf)
+            if cur is None or t != cur[0]:
+                if cur is not None:
+                    out.append(cur)
+                o = cur[4] if cur is not None else x[3]          # open at the previous close: no gaps between candles
+                cur = [t, o, max(o, x[3]), min(o, x[3]), x[3], 0.0]
+            cur[2], cur[3], cur[4] = max(cur[2], x[3]), min(cur[3], x[3]), x[3]
+            cur[5] += x[4] / 1e9
+        if cur is not None:
+            out.append(cur)
+        return dict(found=True, tf=tf, candles=out[-1500:], grad_ts=grad, sol_usd=self.usd)
+
     def axiom_check(self, mint, vals):
         """Store what Axiom shows for a coin next to our live variants at the same moment (data/axiom_checks.jsonl)."""
         with self.lock:
@@ -757,6 +866,14 @@ def serve(t, port):
                 self.send(200, t.original(m))
             elif u.path == "/api/state":
                 self.send(200, t.state(uid, q.get("all") == ["1"]))
+            elif u.path == "/api/detail":
+                self.send(200, t.detail(m, uid))
+            elif u.path == "/api/candles":
+                tf = q.get("tf", ["60"])[0]
+                self.send(200, t.candles(m, int(tf)) if tf in ("1", "5", "15", "60", "300", "900", "3600")
+                          else {"error": "bad timeframe"})
+            elif u.path == "/api/pxalerts":
+                self.send(200, {"alerts": acc.px_list(uid)})
             else:
                 self.send(404, {"error": "not found"})
 
@@ -793,6 +910,22 @@ def serve(t, port):
                     for c in t.coins.values():
                         c.ust.pop(uid, None)
                 return self.send(200, {"ok": True, "settings": st})
+            if p == "/api/pxalerts":
+                try:
+                    m = str(b["mint"])[:64]
+                    with t.lock:
+                        c = t.coins.get(m)
+                        sym = c.sym if c else str(b.get("sym", "?"))
+                    aid = acc.px_add(uid, m, sym, b.get("kind", "mcap"), b.get("op"), float(b["value"]))
+                    return self.send(200 if aid else 400, {"ok": bool(aid), "id": aid, "alerts": acc.px_list(uid)})
+                except (KeyError, TypeError, ValueError):
+                    return self.send(400, {"ok": False})
+            if p == "/api/pxalerts/delete":
+                try:
+                    acc.px_delete(uid, int(b["id"]))
+                    return self.send(200, {"ok": True, "alerts": acc.px_list(uid)})
+                except (KeyError, TypeError, ValueError):
+                    return self.send(400, {"ok": False})
             if p == "/api/testpush":
                 ok, msg = t.test_push(uid)
                 return self.send(200, {"ok": ok, "msg": msg})

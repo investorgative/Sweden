@@ -111,6 +111,8 @@ class Accounts:
             CREATE TABLE IF NOT EXISTS codes (email TEXT, purpose TEXT, code TEXT, expires REAL, tries INT, sent REAL,
                 PRIMARY KEY (email, purpose));
             CREATE TABLE IF NOT EXISTS prefs (uid INT, mint TEXT, kind TEXT, PRIMARY KEY (uid, mint, kind));
+            CREATE TABLE IF NOT EXISTS pxalerts (id INTEGER PRIMARY KEY, uid INT, mint TEXT, sym TEXT, kind TEXT, op TEXT,
+                value REAL, created REAL);
         """)
         if not os.path.exists(secret_path):
             fd = os.open(secret_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
@@ -133,6 +135,12 @@ class Accounts:
             if uid in cache and kind in ("watch", "hide"):
                 cache[uid][kind].add(mint)
         self.cache = cache
+        with self.lock:
+            rows = self.db.execute("SELECT id, uid, mint, sym, kind, op, value, created FROM pxalerts").fetchall()
+        px = {}
+        for r in rows:
+            px.setdefault(r[2], []).append(dict(zip(("id", "uid", "mint", "sym", "kind", "op", "value", "created"), r)))
+        self.px = px                             # mint -> active price / mcap alerts (one-shot: deleted when fired)
 
     def users(self):
         return self.cache
@@ -311,5 +319,27 @@ class Accounts:
                     self.db.execute("DELETE FROM prefs WHERE uid = ? AND mint = ? AND kind = 'watch'", (uid, mint))
             else:
                 self.db.execute("DELETE FROM prefs WHERE uid = ? AND mint = ? AND kind = ?", (uid, mint, kind))
+            self.db.commit()
+        self.reload()
+
+    # ---------- price / mcap alerts (one-shot) ----------
+    def px_list(self, uid):
+        return sorted((a for v in self.px.values() for a in v if a["uid"] == uid), key=lambda a: -a["created"])
+
+    def px_add(self, uid, mint, sym, kind, op, value):
+        if kind not in ("mcap", "price") or op not in (">=", "<=") or not (value > 0):
+            return None
+        if len(self.px_list(uid)) >= 50:
+            return None
+        with self.lock:
+            cur = self.db.execute("INSERT INTO pxalerts (uid, mint, sym, kind, op, value, created) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                                  (uid, mint, sym[:32], kind, op, float(value), time.time()))
+            self.db.commit()
+        self.reload()
+        return cur.lastrowid
+
+    def px_delete(self, uid, aid):
+        with self.lock:
+            self.db.execute("DELETE FROM pxalerts WHERE id = ? AND uid = ?", (aid, uid))
             self.db.commit()
         self.reload()
