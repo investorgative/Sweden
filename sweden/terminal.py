@@ -833,7 +833,10 @@ def serve(t, port):
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Referrer-Policy", "no-referrer")
             self.end_headers()
-            self.wfile.write(body)
+            try:
+                self.wfile.write(body)
+            except (BrokenPipeError, ConnectionResetError):   # the browser closed the page / connection meanwhile
+                pass
 
         def ip(self):
             peer = self.client_address[0]
