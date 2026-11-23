@@ -225,7 +225,7 @@
   .cp-top .acts { align-self: center; }
   .cp-top a.axiom { display: inline-flex; align-items: center; gap: 6px; background: #fff; color: #07080c; border-radius: 8px; padding: 7px 10px;
                     font-weight: 800; font-size: 13px; text-decoration: none; }
-  .cp-body { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; padding: 14px 16px 60px; max-width: 1500px; margin: 0 auto; }
+  .cp-body { display: grid; grid-template-columns: minmax(0, 1fr) var(--sw, 340px); gap: 14px; padding: 14px 16px 60px; max-width: 1500px; margin: 0 auto; }
   .cp-main, .cp-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
   .cp-pnl { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
   .cp-body.editing .cp-main, .cp-body.editing .cp-side { min-height: 120px; border-radius: 14px; outline: 1px dashed var(--panel3); outline-offset: 4px; }
@@ -233,16 +233,24 @@
   .cp-body.editing [data-panel][hidden] { display: flex !important; min-height: 64px; opacity: .55; }
   .pnl-edit { display: none; }
   .cp-body.editing .pnl-edit { display: flex; position: absolute; inset: 0; z-index: 2; align-items: center; justify-content: center; gap: 8px;
-    background: color-mix(in srgb, var(--bg) 86%, transparent); border: 2px dashed var(--accent); border-radius: 12px; cursor: grab; }
+    background: color-mix(in srgb, var(--bg) 86%, transparent); border: 2px dashed var(--blue); border-radius: 12px; cursor: grab; }
   .pnl-edit b { position: absolute; top: 8px; left: 12px; font-size: 12px; color: var(--text); background: var(--panel); padding: 3px 8px; border-radius: 6px; }
   .pnl-edit button { background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: 7px 11px; font-size: 14px; cursor: pointer; }
-  .pnl-edit button:hover { border-color: var(--accent); }
+  .pnl-edit button:hover { border-color: var(--blue); }
   .cp-body [data-panel].dragging { opacity: .35; }
-  #cplock.on { color: var(--accent); border-color: var(--accent); }
+  .cp-body [data-panel].sized { overflow: auto; }
+  .pnl-rs { position: absolute; left: 0; right: 0; bottom: 0; height: 16px; cursor: ns-resize; display: flex; align-items: center; justify-content: center; touch-action: none; }
+  .pnl-rs::after { content: ""; width: 54px; height: 5px; border-radius: 3px; background: var(--blue); }
+  .cp-side { position: relative; }
+  .col-rs { display: none; }
+  .cp-body.editing .col-rs { display: flex; position: absolute; left: -13px; top: 0; bottom: 0; width: 12px; cursor: ew-resize; z-index: 3; align-items: center; justify-content: center; touch-action: none; }
+  .cp-body.editing .col-rs::after { content: ""; width: 5px; height: 64px; border-radius: 3px; background: var(--blue); }
+  @media (max-width: 900px) { .cp-body.editing .col-rs { display: none; } }
+  #cplock.on { color: var(--blue); border-color: var(--blue); }
   @media (max-width: 720px) { .layoutbar.show { bottom: 78px !important; } .layoutbar .lbtxt { display: none; } }
   .layoutbar { display: none; }
   .cp-body.editing ~ .layoutbar, .layoutbar.show { display: flex; position: fixed; left: 50%; transform: translateX(-50%); bottom: 16px; z-index: 8; width: max-content; max-width: calc(100% - 24px);
-    gap: 8px; align-items: center; background: var(--panel); border: 1px solid var(--accent); border-radius: 12px; padding: 8px 12px; font-size: 13px; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
+    gap: 8px; align-items: center; background: var(--panel); border: 1px solid var(--blue); border-radius: 12px; padding: 8px 12px; font-size: 13px; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
   .cp-kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
   .cp-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
   .seg { display: inline-flex; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 2px; }
@@ -1044,7 +1052,7 @@ function showCoin(mint) {
       <div class="cp-box" data-panel="info"><h4>Token info</h4><div class="metrics" id="cpmetrics"></div><div class="kv num" id="cpkv" style="margin-top:12px"></div></div>
       <div class="cp-box" data-panel="links"><div class="links" id="cplinks"></div></div>
     </aside></div>
-    <div class="layoutbar" id="cplayoutbar"><span class="lbtxt">Drag the panels (or use the arrows), then</span> <button class="iconbtn" id="cplockdone">${ic("lock")} Lock &amp; save</button>
+    <div class="layoutbar" id="cplayoutbar"><span class="lbtxt">Drag the panels, pull the bars to resize, then</span> <button class="iconbtn" id="cplockdone">${ic("lock")} Lock &amp; save</button>
       <button class="iconbtn" id="cplayoutcancel">Cancel</button></div>`;
   el.classList.add("show"); document.body.style.overflow = "hidden"; el.scrollTop = 0;
   $("#cpback").onclick = () => history.back();
@@ -1275,10 +1283,30 @@ function applyCoinLayout(lay) {
   const put = (col, ids) => ids.forEach((id) => { if (all[id]) { col.appendChild(all[id]); delete all[id]; } });
   put(main, lay.main); put(side, lay.side);
   for (const id of Object.keys(all)) (DEFAULT_LAYOUT.main.includes(id) ? main : side).appendChild(all[id]);   // panels added later
+  const hs = lay.h || {};
+  document.querySelectorAll("#coinpage [data-panel]").forEach((p) => setPanelHeight(p, hs[p.dataset.panel]));
+  const body = document.querySelector("#coinpage .cp-body");
+  if (lay.sw) body.style.setProperty("--sw", lay.sw + "px"); else body.style.removeProperty("--sw");
+}
+function setPanelHeight(p, h) {
+  h = h ? Math.round(h) : null;
+  if (h) p.dataset.h = h; else delete p.dataset.h;
+  if (p.dataset.panel === "chart") { $("#cpchart").style.height = h ? h + "px" : ""; return; }   // the chart box itself; the chart follows
+  p.style.height = h ? h + "px" : ""; p.classList.toggle("sized", !!h);
 }
 function currentLayout() {
   const ids = (sel) => [...document.querySelectorAll(`#coinpage ${sel} > [data-panel]`)].map((p) => p.dataset.panel);
-  return { main: ids(".cp-main"), side: ids(".cp-side") };
+  const h = {};
+  document.querySelectorAll("#coinpage [data-panel]").forEach((p) => { if (p.dataset.h) h[p.dataset.panel] = +p.dataset.h; });
+  const sw = parseInt(document.querySelector("#coinpage .cp-body").style.getPropertyValue("--sw")) || null;
+  return { main: ids(".cp-main"), side: ids(".cp-side"), ...(Object.keys(h).length ? { h } : {}), ...(sw ? { sw } : {}) };
+}
+function resizeDrag(e, onMove, onEnd) {                     // pointer drag (mouse and touch)
+  e.preventDefault(); e.stopPropagation();
+  const x0 = e.clientX, y0 = e.clientY;
+  const move = (ev) => onMove(ev.clientX - x0, ev.clientY - y0);
+  const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); window.removeEventListener("pointercancel", up); onEnd && onEnd(); };
+  window.addEventListener("pointermove", move); window.addEventListener("pointerup", up); window.addEventListener("pointercancel", up);
 }
 function unlockCoinLayout() {
   const body = document.querySelector("#coinpage .cp-body"); if (!body) return;
@@ -1289,10 +1317,25 @@ function unlockCoinLayout() {
     if (p.querySelector(":scope > .pnl-edit")) return;
     const o = document.createElement("div");
     o.className = "pnl-edit";
-    o.innerHTML = `<b>${esc(PANELS[p.dataset.panel] || p.dataset.panel)}</b><button data-mv="up" title="Up">↑</button><button data-mv="down" title="Down">↓</button><button data-mv="col" title="To the other column">⇄</button>`;
+    o.innerHTML = `<b>${esc(PANELS[p.dataset.panel] || p.dataset.panel)}</b><button data-mv="up" title="Up">↑</button><button data-mv="down" title="Down">↓</button><button data-mv="col" title="To the other column">⇄</button>
+      <button data-mv="auto" title="Automatic height">↕ auto</button><div class="pnl-rs" title="Drag to change the height"></div>`;
     p.appendChild(o);
     p.draggable = true;
+    o.querySelector(".pnl-rs").onpointerdown = (e) => {
+      const chart = p.dataset.panel === "chart", start = chart ? $("#cpchart").offsetHeight : p.offsetHeight;
+      p.draggable = false;
+      resizeDrag(e, (dx, dy) => setPanelHeight(p, Math.max(chart ? 180 : 60, Math.min(2000, start + dy))), () => { p.draggable = true; });
+    };
   });
+  if (!body.querySelector(".col-rs")) {
+    const side = body.querySelector(".cp-side"), bar = document.createElement("div");
+    bar.className = "col-rs"; bar.title = "Drag to change the width of the right column";
+    side.prepend(bar);
+    bar.onpointerdown = (e) => {
+      const start = side.offsetWidth;
+      resizeDrag(e, (dx) => body.style.setProperty("--sw", Math.max(240, Math.min(900, start - dx)) + "px"));
+    };
+  }
   body.onclick = (e) => {
     const b = e.target.closest("[data-mv]"); if (!b || !cp.editing) return;
     e.stopPropagation();
@@ -1300,6 +1343,7 @@ function unlockCoinLayout() {
     if (b.dataset.mv === "up" && p.previousElementSibling) col.insertBefore(p, p.previousElementSibling);
     else if (b.dataset.mv === "down" && p.nextElementSibling) col.insertBefore(p.nextElementSibling, p);
     else if (b.dataset.mv === "col") (col.classList.contains("cp-main") ? body.querySelector(".cp-side") : body.querySelector(".cp-main")).appendChild(p);
+    else if (b.dataset.mv === "auto") setPanelHeight(p, null);
     p.scrollIntoView({ block: "nearest", behavior: "smooth" });
     if (p.dataset.panel === "chart") setTimeout(rebuildChart, 50);
   };
@@ -1320,12 +1364,12 @@ async function lockCoinLayout(save) {
   cp.editing = false;
   body.classList.remove("editing"); $("#cplock").classList.remove("on"); $("#cplock").title = "Unlock the layout to rearrange the panels";
   $("#cplayoutbar").classList.remove("show");
-  body.querySelectorAll(".pnl-edit").forEach((o) => o.remove());
+  body.querySelectorAll(".pnl-edit, .col-rs").forEach((o) => o.remove());
   body.querySelectorAll("[data-panel]").forEach((p) => p.draggable = false);
   body.onclick = body.ondragstart = body.ondragend = body.ondragover = null;
   if (!save) { applyCoinLayout(cp.layoutBefore); rebuildChart(); return; }
   const lay = currentLayout();
-  const same = JSON.stringify(lay) === JSON.stringify(DEFAULT_LAYOUT);
+  const same = JSON.stringify(lay) === JSON.stringify(DEFAULT_LAYOUT);     // no sizes, default order
   await saveCoinLayout(same ? "" : JSON.stringify(lay));
   rebuildChart();
 }

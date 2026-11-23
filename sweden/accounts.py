@@ -73,7 +73,7 @@ def clean_settings(new, base):
                 out[k] = v
             elif k == "card_view" and v in CARD_VIEWS:
                 out[k] = v
-            elif k == "cp_layout" and isinstance(v, str) and len(v) <= 600:
+            elif k == "cp_layout" and isinstance(v, str) and len(v) <= 1500:
                 if v == "":
                     out[k] = ""
                 else:
@@ -81,7 +81,13 @@ def clean_settings(new, base):
                     lay = lay if isinstance(lay, dict) else {}
                     cols = (lay.get("main"), lay.get("side"))
                     if all(isinstance(c, list) and all(isinstance(x, str) and re.match(r"^[a-z]{2,12}$", x) for x in c) for c in cols):
-                        out[k] = json.dumps({"main": cols[0][:20], "side": cols[1][:20]})
+                        hs = lay.get("h") if isinstance(lay.get("h"), dict) else {}
+                        hs = {x: int(y) for x, y in list(hs.items())[:20]
+                              if re.match(r"^[a-z]{2,12}$", str(x)) and isinstance(y, (int, float)) and 60 <= y <= 2000}
+                        sw = lay.get("sw")
+                        sw = int(sw) if isinstance(sw, (int, float)) and 240 <= sw <= 900 else None
+                        out[k] = json.dumps({"main": cols[0][:20], "side": cols[1][:20], **({"h": hs} if hs else {}),
+                                             **({"sw": sw} if sw else {})})
             elif k == "display_name" and isinstance(v, str):
                 out[k] = re.sub(r"[^\w .-]", "", v.strip())[:24]
             elif k == "ntfy_topic" and isinstance(v, str) and (v == "" or TOPIC_RE.match(v.strip())):
@@ -158,7 +164,6 @@ class Accounts:
         for uid, mint, kind in prefs:
             if uid in cache and kind in ("watch", "hide"):
                 cache[uid][kind].add(mint)
-        self.cache = cache
         with self.lock:
             rows = self.db.execute("SELECT id, uid, mint, sym, kind, op, value, created FROM pxalerts").fetchall()
         px = {}
@@ -194,6 +199,7 @@ class Accounts:
             u.setdefault("notes", {})
             u.setdefault("snooze", {})
             u.setdefault("tracked", {})
+        self.cache = cache                       # swap in only when complete (pages read it meanwhile)
 
     def users(self):
         return self.cache
