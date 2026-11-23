@@ -306,6 +306,7 @@ class Terminal:
         self.started = time.time()
         self.events = 0
         self.seq = 0
+        self._watched = set()
 
     # ---------- data ----------
     def files(self):
@@ -313,15 +314,22 @@ class Terminal:
         fs = [f for f in glob.glob(os.path.join(R.DATA, "*", "events-*.jsonl.gz")) if os.path.getmtime(f) >= cut]
         return sorted(fs, key=os.path.getmtime)
 
+    def watched(self):
+        """Coins on anyone's watchlist: kept (and rebuilt after a restart) beyond the usual window."""
+        return set().union(*(u["watch"] for u in self.acc.users().values()))
+
     def poll(self):
         recent = time.time() - self.a.max_age - 1800
+        self._watched = self.watched()
+        wb = [m.encode() for m in self._watched]
         for f in self.files():
             t = self.tails.get(f)
             if t is None:
                 t = self.tails[f] = Tail(f)
             only_launches = not self.live and os.path.getmtime(f) < recent   # old file: history only
             for line in t.lines():
-                if only_launches and b'"C",' not in line and b'"G",' not in line and b'"P",' not in line:
+                if only_launches and b'"C",' not in line and b'"G",' not in line and b'"P",' not in line \
+                        and not any(m in line for m in wb):          # old file: launches + watchlist coins only
                     continue
                 try:
                     r = json.loads(line)
@@ -339,7 +347,7 @@ class Terminal:
             prior = sum(1 for t in hist if ts - t < 86400)
             hist.append(ts)
             earlier = R.copy_matches(self.names, ts, r[7], r[8], mint, self.graduated)
-            if not history_only and not r[12] and ts >= time.time() - self.a.max_age - 1800:
+            if not r[12] and ((not history_only and ts >= time.time() - self.a.max_age - 1800) or mint in self._watched):
                 self.coins[mint] = Coin(r, prior, bool(earlier))
                 e = sorted(((m, t, why) for m, (t, why) in earlier.items()), key=lambda x: x[1])  # earliest = likely originals
                 self.coins[mint].copy_of = e if len(e) <= COPY_MATCHES else e[:2] + e[-(COPY_MATCHES - 2):]
@@ -604,7 +612,8 @@ class Terminal:
                 last_prune = time.time()
                 with self.lock:
                     cut = time.time() - self.a.max_age - 1800
-                    self.coins = {m: c for m, c in self.coins.items() if c.ts >= cut}
+                    keep = self.watched()                    # watchlist coins stay until they are unstarred
+                    self.coins = {m: c for m, c in self.coins.items() if c.ts >= cut or m in keep}
                     for k in list(self.creators):
                         self.creators[k] = [t for t in self.creators[k] if t >= time.time() - 86400]
                         if not self.creators[k]:
