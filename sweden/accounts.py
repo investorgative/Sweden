@@ -73,6 +73,15 @@ def clean_settings(new, base):
                 out[k] = v
             elif k == "card_view" and v in CARD_VIEWS:
                 out[k] = v
+            elif k == "cp_layout" and isinstance(v, str) and len(v) <= 600:
+                if v == "":
+                    out[k] = ""
+                else:
+                    lay = json.loads(v)
+                    lay = lay if isinstance(lay, dict) else {}
+                    cols = (lay.get("main"), lay.get("side"))
+                    if all(isinstance(c, list) and all(isinstance(x, str) and re.match(r"^[a-z]{2,12}$", x) for x in c) for c in cols):
+                        out[k] = json.dumps({"main": cols[0][:20], "side": cols[1][:20]})
             elif k == "display_name" and isinstance(v, str):
                 out[k] = re.sub(r"[^\w .-]", "", v.strip())[:24]
             elif k == "ntfy_topic" and isinstance(v, str) and (v == "" or TOPIC_RE.match(v.strip())):

@@ -217,7 +217,7 @@
   /* coin page (tap a card's chart) */
   #coinpage { position: fixed; inset: 0; z-index: 6; background: var(--bg); overflow-y: auto; display: none; }
   #coinpage.show { display: block; }
-  .cp-top { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+  .cp-top { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: 10px; padding: 10px 16px;
             background: color-mix(in srgb, var(--bg) 94%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
   .cp-top .img { width: 40px; height: 40px; }
   .cp-top .title { flex: 1; min-width: 0; }
@@ -227,6 +227,22 @@
                     font-weight: 800; font-size: 13px; text-decoration: none; }
   .cp-body { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; padding: 14px 16px 60px; max-width: 1500px; margin: 0 auto; }
   .cp-main, .cp-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .cp-pnl { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .cp-body.editing .cp-main, .cp-body.editing .cp-side { min-height: 120px; border-radius: 14px; outline: 1px dashed var(--panel3); outline-offset: 4px; }
+  .cp-body.editing [data-panel] { position: relative; }
+  .cp-body.editing [data-panel][hidden] { display: flex !important; min-height: 64px; opacity: .55; }
+  .pnl-edit { display: none; }
+  .cp-body.editing .pnl-edit { display: flex; position: absolute; inset: 0; z-index: 2; align-items: center; justify-content: center; gap: 8px;
+    background: color-mix(in srgb, var(--bg) 86%, transparent); border: 2px dashed var(--accent); border-radius: 12px; cursor: grab; }
+  .pnl-edit b { position: absolute; top: 8px; left: 12px; font-size: 12px; color: var(--text); background: var(--panel); padding: 3px 8px; border-radius: 6px; }
+  .pnl-edit button { background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: 7px 11px; font-size: 14px; cursor: pointer; }
+  .pnl-edit button:hover { border-color: var(--accent); }
+  .cp-body [data-panel].dragging { opacity: .35; }
+  #cplock.on { color: var(--accent); border-color: var(--accent); }
+  @media (max-width: 720px) { .layoutbar.show { bottom: 78px !important; } .layoutbar .lbtxt { display: none; } }
+  .layoutbar { display: none; }
+  .cp-body.editing ~ .layoutbar, .layoutbar.show { display: flex; position: fixed; left: 50%; transform: translateX(-50%); bottom: 16px; z-index: 8; width: max-content; max-width: calc(100% - 24px);
+    gap: 8px; align-items: center; background: var(--panel); border: 1px solid var(--accent); border-radius: 12px; padding: 8px 12px; font-size: 13px; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
   .cp-kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
   .cp-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
   .seg { display: inline-flex; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 2px; }
@@ -996,40 +1012,46 @@ function showCoin(mint) {
       <button class="iconbtn" id="cpback" aria-label="Back">←</button><div class="img" id="cpimg"></div>
       <div class="title"><div class="name"><span id="cpname">…</span><button class="mini" data-copy="${esc(mint)}" title="Copy CA">${ic("copy")}</button></div>
         <div class="sub" id="cpsub"></div></div>
-      <div class="acts" id="cpacts"></div><button class="iconbtn" id="cpshare" title="Copy a link to this coin page (friends need the passkey)">🔗</button><button class="iconbtn" data-pastebtn="1" title="Open the coin whose CA is in your clipboard (or Ctrl+V)">${ic("paste")}</button>
+      <div class="acts" id="cpacts"></div><button class="iconbtn" id="cplock" title="Unlock the layout to rearrange the panels">${ic("lock")}</button><button class="iconbtn" id="cpshare" title="Copy a link to this coin page (friends need the passkey)">🔗</button><button class="iconbtn" data-pastebtn="1" title="Open the coin whose CA is in your clipboard (or Ctrl+V)">${ic("paste")}</button>
       <a class="axiom" id="cpax" target="_blank" rel="noopener noreferrer">Axiom ${ic("ext")}</a></div>
     <div class="cp-body"><div class="cp-main">
-      <div class="cp-kpis num" id="cpkpis"></div>
-      <div class="cp-tools"><div class="seg" id="cptf">${TFS.map(([t, l]) => `<button data-tf="${t}" class="${t === cp.tf ? "on" : ""}">${l}</button>`).join("")}</div>
+      <div class="cp-kpis num" id="cpkpis" data-panel="kpis"></div>
+      <div class="cp-pnl" data-panel="chart"><div class="cp-tools"><div class="seg" id="cptf">${TFS.map(([t, l]) => `<button data-tf="${t}" class="${t === cp.tf ? "on" : ""}">${l}</button>`).join("")}</div>
         <div class="seg" id="cpmode"><button data-cmode="mcap" class="${cp.mode === "mcap" ? "on" : ""}">MCap</button><button data-cmode="price" class="${cp.mode === "price" ? "on" : ""}">Price</button></div>
         <label class="wnote"><input type="checkbox" id="cpholders"${cp.showHolders ? " checked" : ""}> holders line</label></div>
-      <div id="cpchart"><div class="msg">Loading chart…</div></div>
-      <div class="cp-box"><div class="cp-tabs"><button class="tab" data-cptab="trades">Trades</button><button class="tab" data-cptab="traders">Top traders</button>
+      <div id="cpchart"><div class="msg">Loading chart…</div></div></div>
+      <div class="cp-box" data-panel="lists"><div class="cp-tabs"><button class="tab" data-cptab="trades">Trades</button><button class="tab" data-cptab="traders">Top traders</button>
         <button class="tab" data-cptab="holders">Top holders</button><button class="tab" data-cptab="linked">Linked wallets</button>
         <button class="tab" data-cptab="dev">Dev history <span class="n" id="cpdevn"></span></button></div>
         <div class="tlwrap" id="cplist"></div></div>
     </div><aside class="cp-side">
-      <div class="cp-box"><h4>${ic("bell")} Price / mcap alert</h4>
+      <div class="cp-box" data-panel="alert"><h4>${ic("bell")} Price / mcap alert</h4>
         <div class="seg" id="cpakind" style="display:inline-flex;margin-bottom:8px"><button data-akind="mcap" class="on">MCap</button><button data-akind="price">Price</button></div>
         <div class="axrow2"><input id="cpaval" inputmode="decimal" placeholder="e.g. 50k" autocomplete="off"><button id="cpaadd">Add</button></div>
         <div class="quick">${[-50, -25, 25, 50, 100].map((p) => `<button data-q="${p}">${p > 0 ? "+" : ""}${p}%</button>`).join("")}</div>
         <div class="alist" id="cpalerts"></div></div>
-      <div class="cp-box"><h4>Trade calculator</h4>
+      <div class="cp-box" data-panel="calc"><h4>Trade calculator</h4>
         <div class="axrow2"><input id="cpcalc" inputmode="decimal" value="0.5" autocomplete="off"><span style="align-self:center;color:var(--muted)">SOL</span></div>
         <div class="quick">${[0.1, 0.25, 0.5, 1, 2].map((v) => `<button data-calc="${v}">${v}</button>`).join("")}</div>
         <div class="kv num" id="cpcalcout"></div></div>
-      <div class="cp-box"><h4>Your note</h4><div class="ntags" id="cpntags"></div>
+      <div class="cp-box" data-panel="note"><h4>Your note</h4><div class="ntags" id="cpntags"></div>
         <textarea id="cpnote" maxlength="500" placeholder="Only you see this - meme, narrative, why you skipped it…"></textarea>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px"><label class="wnote"><input type="checkbox" id="cpnoteshare"> share with friends</label>
           <button class="iconbtn" id="cpnotesave">Save note</button></div><div id="cpfriends"></div></div>
-      <div class="cp-box" id="cpminebox" hidden><h4>Your position</h4><div class="kv num" id="cpmine"></div></div>
-      <div class="cp-box" id="cpfbox" hidden><h4>Friends</h4><div class="fpos" id="cpfpos"></div></div>
-      <div class="cp-box"><h4>Buy / sell pressure</h4><div id="cppress"></div></div>
-      <div class="cp-box"><h4>Token info</h4><div class="metrics" id="cpmetrics"></div><div class="kv num" id="cpkv" style="margin-top:12px"></div></div>
-      <div class="cp-box"><div class="links" id="cplinks"></div></div>
-    </aside></div>`;
+      <div class="cp-box" id="cpminebox" data-panel="mine" hidden><h4>Your position</h4><div class="kv num" id="cpmine"></div></div>
+      <div class="cp-box" id="cpfbox" data-panel="friends" hidden><h4>Friends</h4><div class="fpos" id="cpfpos"></div></div>
+      <div class="cp-box" data-panel="pressure"><h4>Buy / sell pressure</h4><div id="cppress"></div></div>
+      <div class="cp-box" data-panel="info"><h4>Token info</h4><div class="metrics" id="cpmetrics"></div><div class="kv num" id="cpkv" style="margin-top:12px"></div></div>
+      <div class="cp-box" data-panel="links"><div class="links" id="cplinks"></div></div>
+    </aside></div>
+    <div class="layoutbar" id="cplayoutbar"><span class="lbtxt">Drag the panels (or use the arrows), then</span> <button class="iconbtn" id="cplockdone">${ic("lock")} Lock &amp; save</button>
+      <button class="iconbtn" id="cplayoutcancel">Cancel</button></div>`;
   el.classList.add("show"); document.body.style.overflow = "hidden"; el.scrollTop = 0;
   $("#cpback").onclick = () => history.back();
+  applyCoinLayout();
+  $("#cplock").onclick = () => (cp.editing ? lockCoinLayout(true) : unlockCoinLayout());
+  $("#cplockdone").onclick = () => lockCoinLayout(true);
+  $("#cplayoutcancel").onclick = () => lockCoinLayout(false);
   $("#cpshare").onclick = () => {
     const url = location.origin + location.pathname + "#coin/" + mint;
     (navigator.clipboard && window.isSecureContext ? navigator.clipboard.writeText(url) : Promise.reject()).then(() => toast("Link copied - friends need the passkey"), () => prompt("Link to this coin:", url));
@@ -1237,7 +1259,88 @@ function bindProfileSettings() {
   });
 }
 
+// ================= coin page layout (per account) =================
+const PANELS = { kpis: "Key numbers", chart: "Chart", lists: "Trades / traders / holders", alert: "Price / mcap alert", calc: "Trade calculator",
+                 note: "Your note", mine: "Your position", friends: "Friends", pressure: "Buy / sell pressure", info: "Token info", links: "Links" };
+const DEFAULT_LAYOUT = { main: ["kpis", "chart", "lists"], side: ["alert", "calc", "note", "mine", "friends", "pressure", "info", "links"] };
+function savedLayout() {
+  try { const l = JSON.parse((state && state.settings && state.settings.cp_layout) || ""); if (l && l.main && l.side) return l; } catch (e) {}
+  return DEFAULT_LAYOUT;
+}
+function applyCoinLayout(lay) {
+  lay = lay || savedLayout();
+  const main = document.querySelector("#coinpage .cp-main"), side = document.querySelector("#coinpage .cp-side");
+  if (!main || !side) return;
+  const all = {}; document.querySelectorAll("#coinpage [data-panel]").forEach((p) => all[p.dataset.panel] = p);
+  const put = (col, ids) => ids.forEach((id) => { if (all[id]) { col.appendChild(all[id]); delete all[id]; } });
+  put(main, lay.main); put(side, lay.side);
+  for (const id of Object.keys(all)) (DEFAULT_LAYOUT.main.includes(id) ? main : side).appendChild(all[id]);   // panels added later
+}
+function currentLayout() {
+  const ids = (sel) => [...document.querySelectorAll(`#coinpage ${sel} > [data-panel]`)].map((p) => p.dataset.panel);
+  return { main: ids(".cp-main"), side: ids(".cp-side") };
+}
+function unlockCoinLayout() {
+  const body = document.querySelector("#coinpage .cp-body"); if (!body) return;
+  cp.editing = true; cp.layoutBefore = currentLayout();
+  body.classList.add("editing"); $("#cplock").classList.add("on"); $("#cplock").title = "Lock the layout and save it";
+  $("#cplayoutbar").classList.add("show");
+  body.querySelectorAll("[data-panel]").forEach((p) => {
+    if (p.querySelector(":scope > .pnl-edit")) return;
+    const o = document.createElement("div");
+    o.className = "pnl-edit";
+    o.innerHTML = `<b>${esc(PANELS[p.dataset.panel] || p.dataset.panel)}</b><button data-mv="up" title="Up">↑</button><button data-mv="down" title="Down">↓</button><button data-mv="col" title="To the other column">⇄</button>`;
+    p.appendChild(o);
+    p.draggable = true;
+  });
+  body.onclick = (e) => {
+    const b = e.target.closest("[data-mv]"); if (!b || !cp.editing) return;
+    e.stopPropagation();
+    const p = b.closest("[data-panel]"), col = p.parentElement;
+    if (b.dataset.mv === "up" && p.previousElementSibling) col.insertBefore(p, p.previousElementSibling);
+    else if (b.dataset.mv === "down" && p.nextElementSibling) col.insertBefore(p.nextElementSibling, p);
+    else if (b.dataset.mv === "col") (col.classList.contains("cp-main") ? body.querySelector(".cp-side") : body.querySelector(".cp-main")).appendChild(p);
+    p.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    if (p.dataset.panel === "chart") setTimeout(rebuildChart, 50);
+  };
+  let dragged = null;
+  body.ondragstart = (e) => { dragged = e.target.closest("[data-panel]"); if (!dragged || !cp.editing) return e.preventDefault(); dragged.classList.add("dragging"); e.dataTransfer.effectAllowed = "move"; };
+  body.ondragend = () => { if (dragged) { dragged.classList.remove("dragging"); if (dragged.dataset.panel === "chart") rebuildChart(); } dragged = null; };
+  body.ondragover = (e) => {
+    if (!dragged) return;
+    const col = e.target.closest(".cp-main, .cp-side") || (e.clientX > body.querySelector(".cp-side").getBoundingClientRect().left ? body.querySelector(".cp-side") : body.querySelector(".cp-main"));
+    e.preventDefault();
+    const after = [...col.querySelectorAll(":scope > [data-panel]:not(.dragging)")].find((p) => { const r = p.getBoundingClientRect(); return e.clientY < r.top + r.height / 2; });
+    if (after) { if (after.previousElementSibling !== dragged) col.insertBefore(dragged, after); } else if (col.lastElementChild !== dragged) col.appendChild(dragged);
+  };
+  toast("Layout unlocked - drag the panels or use the arrows");
+}
+async function lockCoinLayout(save) {
+  const body = document.querySelector("#coinpage .cp-body"); if (!body || !cp.editing) return;
+  cp.editing = false;
+  body.classList.remove("editing"); $("#cplock").classList.remove("on"); $("#cplock").title = "Unlock the layout to rearrange the panels";
+  $("#cplayoutbar").classList.remove("show");
+  body.querySelectorAll(".pnl-edit").forEach((o) => o.remove());
+  body.querySelectorAll("[data-panel]").forEach((p) => p.draggable = false);
+  body.onclick = body.ondragstart = body.ondragend = body.ondragover = null;
+  if (!save) { applyCoinLayout(cp.layoutBefore); rebuildChart(); return; }
+  const lay = currentLayout();
+  const same = JSON.stringify(lay) === JSON.stringify(DEFAULT_LAYOUT);
+  await saveCoinLayout(same ? "" : JSON.stringify(lay));
+  rebuildChart();
+}
+async function saveCoinLayout(value) {
+  try {
+    const r = await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json", ...AH() }, body: JSON.stringify({ settings: { cp_layout: value } }) });
+    if (!r.ok) throw 0;
+    const j = await r.json();
+    if (state) state.settings = j.settings;
+    toast(value ? "Layout saved for your account" : "Default layout");
+  } catch (e) { toast("Layout not saved", false); }
+}
+
 function hideCoin(keepPage) {
+  if (cp.editing) lockCoinLayout(false);
   clearInterval(cp.timer); cp.timer = null;
   if (cp.chart) { cp.chart.remove(); cp.chart = null; cp.cs = cp.vs = null; }
   cp.mint = null;
@@ -2149,6 +2252,7 @@ function settingsHtml(st) {
     <div class="sec"><h3>Alerts &amp; tests</h3>
       <div class="row"><label>Test alert<small>flash, sound and a push to your ntfy topic</small></label><button class="iconbtn" id="stest">Send test</button></div>
       <div class="row"><label>Daily summary<small>what the daily push would say right now</small></label><button class="iconbtn" id="sdaily">Preview</button></div>
+      <div class="row"><label>Coin page layout<small>${st.cp_layout ? "your own arrangement (unlock it with the lock on a coin page)" : "default - rearrange it with the lock on a coin page"}</small></label><button class="iconbtn" id="slayoutreset"${st.cp_layout ? "" : " disabled"}>Reset</button></div>
       <pre id="sdailyout" style="display:none;white-space:pre-wrap;font:12px/1.4 ui-monospace,monospace;color:var(--muted);background:var(--panel2);border-radius:8px;padding:8px;margin:4px 0 0"></pre></div>` +
     FIELDS.map(([t, rows]) => `<div class="sec"><h3>${t}</h3>${rows.map(row).join("")}</div>`).join("") +
     `<div class="sec"><h3>Tracked wallets</h3><div class="wnote" style="margin-bottom:6px">Get an alert when one of these wallets buys or sells a coin the terminal tracks; their name shows in the coin page's trades and holders.</div>
@@ -2190,6 +2294,7 @@ function openSettings(st) {
   $("#sbody").innerHTML = settingsHtml(draft);
   $("#settings").classList.add("show");
   $("#stest").onclick = () => $("#testpush").click();
+  $("#slayoutreset").onclick = async () => { await saveCoinLayout(""); draft.cp_layout = ""; $("#slayoutreset").disabled = true; if (cp.mint) applyCoinLayout(DEFAULT_LAYOUT), rebuildChart(); };
   bindProfileSettings();
   const trk = async (wallet, label, on) => {
     const j = await (await fetch("/api/track", { method: "POST", headers: { "Content-Type": "application/json", ...AH() }, body: JSON.stringify({ wallet, label, on }) })).json();

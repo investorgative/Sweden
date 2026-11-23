@@ -1724,9 +1724,10 @@ def serve(t, port):
             b = self.body(2_000_000 if p.startswith("/api/journal/") else 100_000 if p.startswith("/api/social/") else 4000)
             if p == "/api/settings":
                 st = acc.save_settings(uid, b.get("settings"))
-                with t.lock:                             # new dip settings: restart this user's stages quietly
-                    for c in t.coins.values():
-                        c.ust.pop(uid, None)
+                if set(b.get("settings") or {}) - {"cp_layout"}:
+                    with t.lock:                         # new dip settings: restart this user's stages quietly
+                        for c in t.coins.values():
+                            c.ust.pop(uid, None)
                 return self.send(200, {"ok": True, "settings": st})
             if p == "/api/pxalerts":
                 try:
@@ -1859,7 +1860,7 @@ def main():
         show_dd=a.show_dd, dd_min=a.dd_min, dd_max=a.dd_max, bounce=a.bounce, pullback=a.pullback,
         alert_new=True, alert_entry=True, alert_watch=True, alert_danger=True, alert_grad=True, alert_track=True, ntfy_topic="", quiet_from=-1, quiet_to=-1, tz_min=0,
         sound="chime", card_view="cards", daily_hour=-1, font_scale=1.0, display_name="",
-        bg="#07080c", panel="#0f1117", text="#e9ecf5", accent="#526fff", radar_mode="radar")
+        bg="#07080c", panel="#0f1117", text="#e9ecf5", accent="#526fff", radar_mode="radar", cp_layout="")
     acc = A.Accounts(os.path.join(R.DATA, "users.db"), os.path.join(R.DATA, "secret.key"), MAIL_FILE, defaults,
                      prefs_file=PREFS_FILE, owner_topic=os.environ.get("SWEDEN_NTFY_TOPIC", ""))
     t = Terminal(a, acc)
