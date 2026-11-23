@@ -52,8 +52,8 @@ MAIL_FILE = os.environ.get("SWEDEN_MAIL_FILE") or os.path.join(HERE, "..", "gmai
 TUNNEL_LOG = os.environ.get("SWEDEN_TUNNEL_LOG") or os.path.join(HERE, "..", "logs", "tunnel.log")   # tests: =none
 LAST_LINK = os.path.join(R.DATA, "last_link.txt")
 TOKEN_DAYS = 30
-REPAIR_DAILY = 10000                     # Helius calls (1 credit each) per day for the gap repair (free plan: 1 M credits / month)
-REPAIR_AUTO = 120                        # transactions fetched per coin automatically at graduation (more with the button)
+REPAIR_DAILY = 3000                      # Helius calls (1 credit each) per day for gap repair + linked wallets (user: minimal)
+REPAIR_AUTO = 0                          # automatic repair at graduation: off (Helius use kept minimal); the "fix" button repairs
 COPY_MATCHES = 6                         # earlier same-name coins kept per copied coin
 AXIOM_FIELDS = ("top10", "dev", "snipers", "insiders", "bundlers", "holders")
 LOCKOUT = {5: 60, 6: 300, 7: 900}        # wrong passkeys from one address -> seconds locked (then 1 h each)
@@ -396,7 +396,7 @@ class Terminal:
                 c.S = None                          # free the per-wallet state
             if c.grad_ts is None:
                 self.watch_graduated(c)
-                if self.live and not c.flag and not c.quote:
+                if REPAIR_AUTO and self.live and not c.flag and not c.quote:
                     self.repair_q.put(c.mint)                   # check the trade chain, fetch missing trades
             c.grad_ts = r[3]
         elif kind == "P":

@@ -20,8 +20,8 @@ WSOL = "So11111111111111111111111111111111111111112"
 USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"   # counts as cash (USD), not as a position
 TOKEN_PROGRAMS = ("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb")
 ADDR_RE = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
-MAX_BACKFILL = 1000
-ACTIVE_S, IDLE_S, SNAP_S = 30, 300, 300
+MAX_BACKFILL = 300                               # history loaded once per wallet (3 calls x 100 credits)
+ACTIVE_S, IDLE_S, SNAP_S = 120, 1800, 300          # balance checks: every 2 min while a page is open, else every 30 min
 DUST_USD = 0.5                                   # positions worth less are listed as dust
 
 

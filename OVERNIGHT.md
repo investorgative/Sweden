@@ -1,4 +1,8 @@
-# Overnight work, 23 Nov 2026 (not deployed, not on GitHub)
+# Overnight work, 23 Nov 2026 (deployed 23 Nov with Helius use kept minimal)
+
+Helius use as deployed: no automatic gap repair (the "fix" button only), linked wallets on the button, wallet balances
+every 2 min while a page is open (else every 30 min), wallet history 300 transactions once, new wallet transactions
+1 credit each, daily cap 3,000 credits for repair + linked wallets. Roughly 250-3,600 credits per wallet and day.
 
 Everything is on the local branch `overnight-2026-11-23` in the worktree `~/sweden-overnight`. The running terminal
 (`~/sweden`) and GitHub are untouched. Nothing here is live until you say so.
