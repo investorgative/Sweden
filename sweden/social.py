@@ -66,7 +66,10 @@ class Social:
         return d
 
     def defaults(self, uid):
-        return dict(SHARE_DEFAULTS, **{k: v for k, v in VIEW_DEFAULTS.items() if k != "nickname"}, **self.defs.get(uid, {}))
+        out = dict(SHARE_DEFAULTS)
+        out.update({k: v for k, v in VIEW_DEFAULTS.items() if k != "nickname"})
+        out.update(self.defs.get(uid, {}))
+        return out
 
     def name(self, uid, users, viewer=None):
         """Nickname (set by the viewer) > display name > username > e-mail name."""
