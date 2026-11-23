@@ -23,6 +23,24 @@ export const HOUSE_STAGES = [
   { at: 1, name: 'Keys in hand', desc: 'Fully funded. Welcome home.' },
 ] as const
 
+/** Money needed for each stage as a share of the goal: exponential (each step ~2.1x the last, the first at 1/400 of the
+ *  goal), so a small account gets many steps early - with a $10K goal: $25, $53, $112, $236, $500, $1.1K, $2.2K, $4.7K,
+ *  $10K. The drawing keeps its own stage positions (`at`); houseProgress maps money onto them. */
+export const STAGE_MONEY: number[] = HOUSE_STAGES.map((_, i) => (i === 0 ? 0 : Math.pow(1 / 400, (HOUSE_STAGES.length - 1 - i) / (HOUSE_STAGES.length - 2))))
+
+/** share of the goal earned (0..1) -> progress of the drawing (0..1), linear between the stages' money thresholds */
+export function houseProgress(f: number) {
+  if (!(f > 0)) return 0
+  if (f >= 1) return 1
+  for (let i = 1; i < HOUSE_STAGES.length; i++) {
+    if (f < STAGE_MONEY[i]) {
+      const a = STAGE_MONEY[i - 1], b = STAGE_MONEY[i]
+      return HOUSE_STAGES[i - 1].at + ((f - a) / (b - a)) * (HOUSE_STAGES[i].at - HOUSE_STAGES[i - 1].at)
+    }
+  }
+  return 1
+}
+
 export function stageFor(p: number) {
   let idx = 0
   HOUSE_STAGES.forEach((s, i) => {

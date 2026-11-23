@@ -1294,7 +1294,8 @@ class Terminal:
             vis, why = self.visible(c, uid)
             stage = c.ust[uid].stage if uid in c.ust else "top"
             if c.mint in u["hide"]:
-                return dict(base, tab="hidden", text="Hidden by you")
+                return dict(base, tab="watch" if c.mint in u["watch"] else "hidden",
+                            text="Hidden by you" + (" · on your watchlist" if c.mint in u["watch"] else ""))
             st_txt = {"entry": "ENTRY", "bounce": "bounce", "zone": "in the zone", "dip": "dip"}.get(stage, stage)
             if c.mint in u["watch"]:
                 return dict(base, tab="watch", text="On your watchlist · " + (f"recommended · {st_txt}" if vis else

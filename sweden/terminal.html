@@ -797,7 +797,7 @@ function card(c) {
   if (m.twitter) links.push(["Twitter", xUrl(m.twitter)]);
   if (m.telegram && safeUrl(m.telegram)) links.push(["Telegram", safeUrl(m.telegram)]);
   if (m.website && safeUrl(m.website)) links.push(["Website", safeUrl(m.website)]);
-  const badges = `<span class="badge b-${c.stage}">${LABEL[c.stage]}</span>` + (c.watched ? '<span class="badge b-watch">★ Watchlist</span>' : "") +
+  const badges = `<span class="badge b-${c.stage}">${LABEL[c.stage]}</span>` + (c.watched ? '<span class="badge b-watch">★ Watchlist</span>' : "") + (c.user_hidden ? '<span class="badge b-watch" title="Hidden by you: no recommendations or alerts">hidden</span>' : "") +
     (c.mayhem ? '<span class="badge b-mayhem">Mayhem</span>' : "") +
     (c.smart ? `<span class="badge b-mine" title="Wallets with the most realized profit over the last 24 h that hold this coin">👑 ${c.smart} top-PnL wallet${c.smart === 1 ? "" : "s"}</span>` : "") +
     friendBadge(c) +
@@ -2084,8 +2084,8 @@ function matches(c) {
 function inTab(c) {
   if (!matches(c)) return false;
   if (tab === "hidden") return c.user_hidden;
+  if (tab === "watch") return c.watched;                      // starred coins, whether or not they pass the filter (hidden ones too)
   if (c.user_hidden) return false;
-  if (tab === "watch") return c.watched;                      // starred coins, whether or not they pass the filter
   if (tab === "filtered") return !c.visible;
   if (!c.visible) return false;
   return tab === "all" || c.stage === tab;

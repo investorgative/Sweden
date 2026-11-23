@@ -4,7 +4,7 @@ import { Pause, Play, RotateCcw, Share2, Check, Lock, Pencil, CalendarClock, Ham
 import { useAnalytics } from '@/store/analytics'
 import { useJournal, useSettings } from '@/store/useJournal'
 import { Card, CardHeader, Money, Bar, Button, SectionTitle, cx, AnimatedNumber, usePrivacy } from '@/components/ui/primitives'
-import { HouseScene, HOUSE_STAGES, stageFor } from '@/components/house/HouseScene'
+import { HouseScene, HOUSE_STAGES, STAGE_MONEY, houseProgress, stageFor } from '@/components/house/HouseScene'
 import { EquityChart } from '@/components/charts/EquityChart'
 import { ShareModal } from '@/components/ShareModal'
 import { dateLong, money, monthYear, pct } from '@/lib/format'
@@ -46,16 +46,16 @@ export function DreamHouse() {
 
   const point = idx != null ? curve[idx] : curve[curve.length - 1]
   const cum = point ? point.cum : 0
-  const p = clamp01(cum / settings.goalAmount)
+  const p = houseProgress(clamp01(cum / settings.goalAmount))
   const mood = point ? clamp01(-point.drawdownPct / 0.14) : 0
   const stageIdx = stageFor(p)
   const current = HOUSE_STAGES[stageIdx]
-  const livePct = clamp01(lifetime.summary.netPnl / settings.goalAmount)
+  const livePct = houseProgress(clamp01(lifetime.summary.netPnl / settings.goalAmount))
 
   const reached = useMemo(
     () =>
       HOUSE_STAGES.map((s) => {
-        const target = s.at * settings.goalAmount
+        const target = STAGE_MONEY[HOUSE_STAGES.indexOf(s)] * settings.goalAmount
         const pt = curve.find((c) => c.cum >= target && (s.at > 0 || c.tradeId))
         return { ...s, target, date: s.at === 0 ? curve[0]?.date : pt?.date }
       }),
@@ -129,7 +129,7 @@ export function DreamHouse() {
               </label>
               <label className="block">
                 <span className="mb-1.5 block text-[11px] uppercase tracking-wider text-ink-3">Net profit needed ({settings.currency})</span>
-                <input type="number" min={1000} step={1000} className="focus-ring num w-full rounded-xl border border-line bg-bg-1 px-3 py-2.5 text-sm" value={settings.goalAmount} onChange={(e) => update({ goalAmount: Math.max(1000, +e.target.value || 0) })} />
+                <input type="number" min={10} step={100} className="focus-ring num w-full rounded-xl border border-line bg-bg-1 px-3 py-2.5 text-sm" value={settings.goalAmount} onChange={(e) => update({ goalAmount: Math.max(10, +e.target.value || 0) })} />
               </label>
               <Button variant="gold" onClick={() => setEditing(false)}>
                 <Check size={14} /> Done
@@ -184,14 +184,14 @@ export function DreamHouse() {
             </Button>
             <span className="ml-auto text-[11px] text-ink-3">Drag on the curve to travel in time</span>
           </div>
-          <EquityChart curve={curve} height={190} showDrawdown={false} activeIndex={idx} stickyScrub onScrub={(i) => (setPlaying(false), setIdx(i))} milestones={HOUSE_STAGES.slice(1).map((s) => ({ amount: s.at * settings.goalAmount, label: s.name }))} />
+          <EquityChart curve={curve} height={190} showDrawdown={false} activeIndex={idx} stickyScrub onScrub={(i) => (setPlaying(false), setIdx(i))} milestones={HOUSE_STAGES.slice(1).map((s, i) => ({ amount: STAGE_MONEY[i + 1] * settings.goalAmount, label: s.name }))} />
         </div>
       </Card>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         {/* stage timeline */}
         <Card className="lg:col-span-7">
-          <CardHeader icon={<Hammer size={15} />} title="Construction log" subtitle="Each stage unlocks at a share of your goal" />
+          <CardHeader icon={<Hammer size={15} />} title="Construction log" subtitle="The steps roughly double - many early, so the first dollars count" />
           <div className="relative p-5 sm:p-6">
             <div className="absolute bottom-10 left-[39px] top-10 w-px bg-line sm:left-[43px]" />
             <div className="space-y-1">
@@ -210,7 +210,7 @@ export function DreamHouse() {
                     </div>
                     <div className="text-right">
                       <Money value={s.target} compact className={cx('text-[13px]', done ? 'text-ink-2' : 'text-ink-4')} />
-                      <div className="text-[10.5px] text-ink-4">{done ? dateLong(s.date!) : `${pct(s.at, 0)} of goal`}</div>
+                      <div className="text-[10.5px] text-ink-4">{done ? dateLong(s.date!) : `${pct(s.target / settings.goalAmount, s.target / settings.goalAmount < 0.1 ? 1 : 0)} of goal`}</div>
                     </div>
                   </motion.div>
                 )

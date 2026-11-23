@@ -7,7 +7,7 @@ import { useSettings } from '@/store/useJournal'
 import { useUI } from '@/store/useUI'
 import { Card, CardHeader, Money, Ring, Bar, InfoTip, Pill, cx, AnimatedNumber, usePrivacy } from '@/components/ui/primitives'
 import { EquityChart } from '@/components/charts/EquityChart'
-import { HouseScene, HOUSE_STAGES, stageFor } from '@/components/house/HouseScene'
+import { HouseScene, HOUSE_STAGES, STAGE_MONEY, houseProgress, stageFor } from '@/components/house/HouseScene'
 import { PnlBars } from '@/components/charts/Bars'
 import { MonthCalendar } from '@/components/charts/MonthCalendar'
 import { TradePath } from '@/components/charts/TradePath'
@@ -29,7 +29,7 @@ export function Overview() {
 
   const point = scrub != null ? curve[scrub] : curve[curve.length - 1]
   const lifetimeCum = point ? point.equity - settings.startingBalance : 0
-  const houseP = clamp01(lifetimeCum / settings.goalAmount)
+  const houseP = houseProgress(clamp01(lifetimeCum / settings.goalAmount))
   const mood = point ? clamp01(-point.drawdownPct / 0.14) : 0
   const stage = HOUSE_STAGES[stageFor(houseP)]
   const nextStage = HOUSE_STAGES[Math.min(HOUSE_STAGES.length - 1, stageFor(houseP) + 1)]
@@ -68,7 +68,7 @@ export function Overview() {
             {lastDay ? (
               <>
                 Last session ({dateShort(lastDay.date)}) closed <span className={cx('num font-medium', lastDay.pnl >= 0 ? 'text-profit' : 'text-loss', privacy && 'privacy-blur')}>{money(lastDay.pnl, { sign: true })}</span> over {lastDay.trades} {lastDay.trades === 1 ? "trade" : "trades"}. Your villa is{' '}
-                <span className="text-gold">{Math.round(clamp01((lifetime.summary.netPnl) / settings.goalAmount) * 100)}% built</span> — keep stacking good process.
+                <span className="text-gold">{Math.round(houseProgress(clamp01(lifetime.summary.netPnl / settings.goalAmount)) * 100)}% built</span> — keep stacking good process.
               </>
             ) : (
               'Log your first trade to start building.'
@@ -159,7 +159,7 @@ export function Overview() {
               <span className="text-ink-3">
                 {houseP < 1 ? (
                   <>
-                    <Money value={Math.max(0, settings.goalAmount * nextStage.at - lifetimeCum)} compact className="text-gold" /> to “{nextStage.name}”
+                    <Money value={Math.max(0, settings.goalAmount * STAGE_MONEY[HOUSE_STAGES.indexOf(nextStage)] - lifetimeCum)} compact className="text-gold" /> to “{nextStage.name}”
                   </>
                 ) : (
                   <span className="text-gold">Complete ✦</span>

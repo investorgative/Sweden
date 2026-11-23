@@ -366,6 +366,6 @@ export function computeXp(trades: Trade[], achievements: AchievementState[]) {
 
 /** Profit milestones for the equity-curve flags */
 export function profitMilestones(goal: number) {
-  const base = [10000, 25000, 50000, 100000, 150000, 200000]
+  const base = [100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000, 150000, 200000]
   return [...base.filter((b) => b < goal), goal]
 }

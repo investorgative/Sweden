@@ -373,9 +373,7 @@ class Accounts:
                     "hide": ("hide", True), "unhide": ("hide", False)}[action]
         with self.lock:
             if on:
-                self.db.execute("INSERT OR IGNORE INTO prefs VALUES (?, ?, ?)", (uid, mint, kind))
-                if kind == "hide":
-                    self.db.execute("DELETE FROM prefs WHERE uid = ? AND mint = ? AND kind = 'watch'", (uid, mint))
+                self.db.execute("INSERT OR IGNORE INTO prefs VALUES (?, ?, ?)", (uid, mint, kind))   # hidden + watchlist is allowed
             else:
                 self.db.execute("DELETE FROM prefs WHERE uid = ? AND mint = ? AND kind = ?", (uid, mint, kind))
             self.db.commit()
