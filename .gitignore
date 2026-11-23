@@ -6,4 +6,4 @@ data/
 venv/
 terminal_passkey
 ntfy_topic
-brevo.json
+gmail.json

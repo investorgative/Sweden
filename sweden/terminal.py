@@ -44,7 +44,7 @@ HISTORY_S = 72 * 3600                    # creator history (24 h) and copied nam
 AXIOM_FILE = os.path.join(R.DATA, "axiom_checks.jsonl")
 PREFS_FILE = os.path.join(R.DATA, "terminal_prefs.json")
 PASSKEY_FILE = os.path.join(HERE, "..", "terminal_passkey")
-BREVO_FILE = os.path.join(HERE, "..", "brevo.json")
+MAIL_FILE = os.path.join(HERE, "..", "gmail.json")
 TUNNEL_LOG = os.path.join(HERE, "..", "logs", "tunnel.log")
 LAST_LINK = os.path.join(R.DATA, "last_link.txt")
 TOKEN_DAYS = 30
@@ -835,13 +835,13 @@ def main():
         show_dd=a.show_dd, dd_min=a.dd_min, dd_max=a.dd_max, bounce=a.bounce, pullback=a.pullback,
         alert_new=True, alert_entry=True, ntfy_topic="",
         bg="#07080c", panel="#0f1117", text="#e9ecf5", accent="#526fff", radar_mode="radar")
-    acc = A.Accounts(os.path.join(R.DATA, "users.db"), os.path.join(R.DATA, "secret.key"), BREVO_FILE, defaults,
+    acc = A.Accounts(os.path.join(R.DATA, "users.db"), os.path.join(R.DATA, "secret.key"), MAIL_FILE, defaults,
                      prefs_file=PREFS_FILE, owner_topic=os.environ.get("SWEDEN_NTFY_TOPIC", ""))
     t = Terminal(a, acc)
     for target in (t.loop, t.meta_worker, t.price_worker, t.link_worker):
         threading.Thread(target=target, daemon=True).start()
     log(f"SWEDEN terminal on http://0.0.0.0:{a.port}  ({len(acc.users())} account(s), "
-        f"mail: {'Brevo' if acc.mailer.cfg else 'not set up - codes go to this log'})")
+        f"mail: {'Gmail' if acc.mailer.cfg else 'not set up - codes go to this log'})")
     serve(t, a.port)
 
 

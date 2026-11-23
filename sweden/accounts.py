@@ -2,14 +2,15 @@
 
 Stored on the Pi in data/users.db (SQLite). Passwords as salted scrypt hashes; email codes (6 digits) only as hashes,
 valid 15 min, 5 tries. Login tokens are signed with data/secret.key and carry a password version, so a password reset
-logs every device out. Mails go through Brevo (free account, file brevo.json next to terminal.sh:
-{"api_key": "...", "sender_email": "<address verified in Brevo>", "sender_name": "Sweden terminal"}); without that file
-the code is written to the terminal log instead (enough for the owner to sign up before Brevo is set up).
+logs every device out. Mails go out through Gmail with an app password (file gmail.json next to terminal.sh:
+{"address": "<you>@gmail.com", "app_password": "<16 characters from Google>", "sender_name": "Sweden terminal"});
+without that file the code is written to the terminal log instead (enough for the owner to sign up first).
 
 The first account that is verified becomes the owner: it takes over the old shared watchlist / hidden coins
 (data/terminal_prefs.json) and the ntfy topic the terminal was started with.
 """
-import hashlib, hmac, json, os, re, secrets, sqlite3, threading, time, urllib.request
+import hashlib, hmac, json, os, re, secrets, smtplib, sqlite3, ssl, threading, time
+from email.message import EmailMessage
 
 TOKEN_DAYS = 60
 CODE_TTL = 900
@@ -76,7 +77,7 @@ class Mailer:
     def __init__(self, path):
         try:
             self.cfg = json.load(open(path))
-            assert self.cfg.get("api_key") and self.cfg.get("sender_email")
+            assert self.cfg.get("address") and self.cfg.get("app_password")
         except (OSError, ValueError, AssertionError):
             self.cfg = None
 
@@ -84,17 +85,17 @@ class Mailer:
         """True if sent; False = not configured (the caller logs the code) or failed."""
         if not self.cfg:
             return False
-        body = json.dumps({"sender": {"name": self.cfg.get("sender_name") or "Sweden terminal",
-                                      "email": self.cfg["sender_email"]},
-                           "to": [{"email": to}], "subject": subject, "textContent": text}).encode()
-        req = urllib.request.Request("https://api.brevo.com/v3/smtp/email", data=body, method="POST",
-                                     headers={"api-key": self.cfg["api_key"], "Content-Type": "application/json",
-                                              "Accept": "application/json"})
+        msg = EmailMessage()
+        msg["From"] = f'{self.cfg.get("sender_name") or "Sweden terminal"} <{self.cfg["address"]}>'
+        msg["To"], msg["Subject"] = to, subject
+        msg.set_content(text)
         try:
-            urllib.request.urlopen(req, timeout=15).read()
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ssl.create_default_context(), timeout=20) as smtp:
+                smtp.login(self.cfg["address"], self.cfg["app_password"].replace(" ", ""))
+                smtp.send_message(msg)
             return True
         except Exception as e:
-            log("brevo: mail not sent:", repr(e))
+            log("gmail: mail not sent:", repr(e))
             return False
 
 
@@ -179,7 +180,7 @@ class Accounts:
                                 f"Your code to {what}: {code}\n\nIt is valid for 15 minutes. If you did not ask for it, "
                                 f"ignore this mail.")
         if not sent:
-            log(f"ACCOUNT CODE for {email} ({purpose}): {code}   (Brevo not set up or failed - see brevo.json)")
+            log(f"ACCOUNT CODE for {email} ({purpose}): {code}   (Gmail not set up or failed - see gmail.json)")
         return dict(ok=True, mailed=sent)
 
     def _check_code(self, email, purpose, code):
