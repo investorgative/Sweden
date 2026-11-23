@@ -31,7 +31,7 @@ NUMERIC = dict(max_age_h=(float, 0.5, 24), max_mcap_usd=(float, 1000, 1e9), bund
                bounce=(float, 0.01, 5), pullback=(float, 0.01, 0.9),
                quiet_from=(int, -1, 23), quiet_to=(int, -1, 23), tz_min=(int, -840, 840), daily_hour=(int, -1, 23),
                font_scale=(float, 0.8, 1.4))
-BOOLS = ("copy_check", "wash_check", "mayhem", "alert_new", "alert_entry", "alert_watch", "alert_danger", "alert_grad")
+BOOLS = ("copy_check", "wash_check", "mayhem", "alert_new", "alert_entry", "alert_watch", "alert_danger", "alert_grad", "alert_track")
 COLORS = ("bg", "panel", "text", "accent")
 
 
@@ -120,6 +120,7 @@ class Accounts:
             CREATE TABLE IF NOT EXISTS codes (email TEXT, purpose TEXT, code TEXT, expires REAL, tries INT, sent REAL,
                 PRIMARY KEY (email, purpose));
             CREATE TABLE IF NOT EXISTS prefs (uid INT, mint TEXT, kind TEXT, PRIMARY KEY (uid, mint, kind));
+            CREATE TABLE IF NOT EXISTS tracked (uid INT, wallet TEXT, label TEXT, PRIMARY KEY (uid, wallet));
             CREATE TABLE IF NOT EXISTS snooze (uid INT, mint TEXT, until REAL, PRIMARY KEY (uid, mint));
             CREATE TABLE IF NOT EXISTS notes (uid INT, mint TEXT, text TEXT, tag TEXT, ts REAL, PRIMARY KEY (uid, mint));
             CREATE TABLE IF NOT EXISTS pxalerts (id INTEGER PRIMARY KEY, uid INT, mint TEXT, sym TEXT, kind TEXT, op TEXT,
@@ -162,9 +163,18 @@ class Accounts:
         for uid, mint, until in zrows:
             if uid in cache:
                 cache[uid].setdefault("snooze", {})[mint] = until
+        with self.lock:
+            trows = self.db.execute("SELECT uid, wallet, label FROM tracked").fetchall()
+        idx = {}
+        for uid, wallet, label in trows:
+            if uid in cache:
+                cache[uid].setdefault("tracked", {})[wallet] = label
+                idx.setdefault(wallet, []).append((uid, label))
+        self.tracked_idx = idx                   # wallet -> [(user id, label)] (checked on every trade)
         for u in cache.values():
             u.setdefault("notes", {})
             u.setdefault("snooze", {})
+            u.setdefault("tracked", {})
 
     def users(self):
         return self.cache
@@ -396,3 +406,19 @@ class Accounts:
                 self.db.execute("INSERT INTO snooze VALUES (?, ?, ?)", (uid, mint, time.time() + min(hours, 168) * 3600))
             self.db.commit()
         self.reload()
+
+    # ---------- tracked wallets ----------
+    def track(self, uid, wallet, label, on=True):
+        wallet = (wallet or "").strip()
+        if on and not re.match(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$", wallet):
+            return False
+        with self.lock:
+            if on:
+                if self.db.execute("SELECT COUNT(*) FROM tracked WHERE uid = ?", (uid,)).fetchone()[0] >= 100:
+                    return False
+                self.db.execute("REPLACE INTO tracked VALUES (?, ?, ?)", (uid, wallet, (label or "").strip()[:32] or wallet[:4] + "…" + wallet[-4:]))
+            else:
+                self.db.execute("DELETE FROM tracked WHERE uid = ? AND wallet = ?", (uid, wallet))
+            self.db.commit()
+        self.reload()
+        return True

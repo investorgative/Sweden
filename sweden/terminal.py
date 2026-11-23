@@ -224,6 +224,7 @@ class Coin:
         self.res = None                             # (SOL lamports, raw tokens) reserves after the latest trade
         self.fee = 0.0125                           # fee share of the latest trade
         self.danger_at = {}                         # user id -> time of the last danger alert (throttle)
+        self.track_at = {}                          # (user id, wallet) -> time of the last tracked-wallet alert
 
 
 def chart(c, now, n=90):
@@ -386,6 +387,8 @@ class Terminal:
                 self.check_px(c, mc)
                 if not r[6]:
                     self.check_danger(c, r[5], r[8])
+                if r[5] in self.acc.tracked_idx:
+                    self.check_tracked(c, r[5], r[6], r[7], mc)
         elif kind == "G":
             if c.S is not None:
                 c.feat = c.S.features()
@@ -422,6 +425,8 @@ class Terminal:
                 self.check_px(c, Q / B * 1e6)
                 if not buy:
                     self.check_danger(c, r[5], base)
+                if r[5] in self.acc.tracked_idx:
+                    self.check_tracked(c, r[5], buy, quote, Q / B * 1e6)
 
     def price_update(self, c, p, ts, slot):
         b = c.pts.get(ts // 5)                          # swaps arrive over several connections, not in order
@@ -501,6 +506,20 @@ class Terminal:
                 continue
             c.danger_at[uid] = time.time()
             self.alert(c, uid, "danger", f"{c.sym}: {who} {what} (= {tok / R.SUPPLY:.1%} of supply) - you hold this coin")
+
+    def check_tracked(self, c, wallet, buy, lamports, mcap_sol):
+        """A wallet someone follows bought or sold this coin (throttled per user, wallet and coin: 2 min)."""
+        if not self.live or c.repairing:
+            return
+        for uid, label in self.acc.tracked_idx.get(wallet, []):
+            u = self.acc.users().get(uid)
+            if not u or not u["settings"].get("alert_track", True):
+                continue
+            k = (uid, wallet)
+            if time.time() - c.track_at.get(k, 0) < 120:
+                continue
+            c.track_at[k] = time.time()
+            self.alert(c, uid, "track", f"{label} {'bought' if buy else 'sold'} ${c.sym} for ◎{lamports / 1e9:.2f} at mcap {usd_text(mcap_sol * self.usd)}")
 
     def watch_graduated(self, c):
         if not self.live:
@@ -595,7 +614,7 @@ class Terminal:
             req = urllib.request.Request(f"https://ntfy.sh/{urllib.parse.quote(topic)}",
                                          data=(text + ("\n" + c.mint if c else "")).encode(),
                                          headers={"Title": "Sweden: " + {"entry": "ENTRY", "new": "new coin", "px": "price alert",
-                                                                          "danger": "DANGER", "grad": "graduated"}.get(kind, kind),
+                                                                          "danger": "DANGER", "grad": "graduated", "track": "tracked wallet"}.get(kind, kind),
                                                   "Priority": "urgent" if kind == "danger" else "high" if kind in ("entry", "px") else "default",
                                                   **({"Click": f"https://axiom.trade/meme/{c.pool or c.mint}?chain=sol"} if c else {})})
             urllib.request.urlopen(req, timeout=10).read()
@@ -1133,6 +1152,10 @@ class Terminal:
                                  ath_usd=ath * usd if ath else None))
             holders = [dict(wallet=w, share=t / R.SUPPLY, tags=tags(w)) for w, t in held[:20]]
         mine = self.mine(self.wallets.brief(uid), mint, info["mcap_usd"], with_trades=True)
+        lab = self.acc.users()[uid]["tracked"]
+        for row in trades + holders + traders:
+            if row["wallet"] in lab:
+                row["label"] = lab[row["wallet"]]
         info["note"] = self.acc.users()[uid]["notes"].get(mint)
         with self.lock:
             c = self.coins.get(mint)
@@ -1235,7 +1258,7 @@ class Terminal:
         self.wallets.touch(uid)
         return dict(now=now, live=self.live, sol_usd=self.usd, coins=out, alerts=alerts, all=show_all, counts=counts,
                     wallet=self.wallets.summary(uid),
-                    radar=sorted(radar, key=lambda r: r["grad_min"]), email=u["email"], settings=s,
+                    radar=sorted(radar, key=lambda r: r["grad_min"]), email=u["email"], settings=s, tracked=u["tracked"],
                     defaults=self.acc.defaults)
 
 
@@ -1382,6 +1405,9 @@ def serve(t, port):
                 return self.send(200, t.whatif(uid, b.get("settings")))
             if p == "/api/daily/preview":
                 return self.send(200, {"text": t.daily_text(uid)})
+            if p == "/api/track":
+                ok = acc.track(uid, str(b.get("wallet", "")), str(b.get("label", "")), bool(b.get("on", True)))
+                return self.send(200 if ok else 400, {"ok": ok, "error": None if ok else "not a Solana address (or 100 wallets already)"})
             if p == "/api/snooze":
                 try:
                     acc.snooze(uid, str(b["mint"])[:64], float(b.get("hours", 0)))
@@ -1443,7 +1469,7 @@ def main():
         top10_max=R.FILTER["top10_pct"], sniper_max=R.FILTER["sniper_pct"], dev_max=R.FILTER["dev_pct"],
         prior_max=R.FILTER["max_prior_launches"], copy_check=True, wash_check=True, mayhem=a.mayhem,
         show_dd=a.show_dd, dd_min=a.dd_min, dd_max=a.dd_max, bounce=a.bounce, pullback=a.pullback,
-        alert_new=True, alert_entry=True, alert_watch=True, alert_danger=True, alert_grad=True, ntfy_topic="", quiet_from=-1, quiet_to=-1, tz_min=0,
+        alert_new=True, alert_entry=True, alert_watch=True, alert_danger=True, alert_grad=True, alert_track=True, ntfy_topic="", quiet_from=-1, quiet_to=-1, tz_min=0,
         sound="chime", card_view="cards", daily_hour=-1, font_scale=1.0,
         bg="#07080c", panel="#0f1117", text="#e9ecf5", accent="#526fff", radar_mode="radar")
     acc = A.Accounts(os.path.join(R.DATA, "users.db"), os.path.join(R.DATA, "secret.key"), MAIL_FILE, defaults,

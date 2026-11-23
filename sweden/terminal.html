@@ -585,7 +585,7 @@ const P = {
 };
 const ic = (n) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${P[n]}</svg>`;
 
-const AICON = { entry: "🟢", px: "💰", danger: "⚠️", grad: "🎓", test: "🧪", new: "🔔" };
+const AICON = { entry: "🟢", px: "💰", danger: "⚠️", grad: "🎓", test: "🧪", new: "🔔", track: "👁" };
 const NOTE_TAGS = { meme: "👍 good meme", rug: "🚩 rug", watch: "👀 watch", skip: "⏭ skip" };
 const noteHtml = (n) => !n ? "" : `<div class="note">${n.tag ? `<span class="ntag">${NOTE_TAGS[n.tag]}</span>` : ""}${n.text ? `<span>${esc(n.text.slice(0, 140))}</span>` : ""}</div>`;
 const ORDER = { entry: 0, bounce: 1, zone: 2, dip: 3, top: 4, dead: 5 };
@@ -1143,7 +1143,7 @@ function renderCalc() {                                      // buy now and sell
     ["Break-even mcap", `≈ ${usd(i.mcap_usd / (1 + rt))}`]].map(([k, v]) => `<span>${k}</span><b>${v}</b>`).join("");
 }
 const tagHtml = (t) => (t || []).map((x) => `<span class="tag ${x}">${x === "bundler" ? "bundle" : x === "toppnl" ? "top pnl" : x}</span>`).join("");
-const wLink = (w) => `<a href="https://solscan.io/account/${esc(w)}" target="_blank" rel="noopener noreferrer">${esc(short(w))}</a>`;
+const wLink = (w, label) => `<a href="https://solscan.io/account/${esc(w)}" target="_blank" rel="noopener noreferrer">${esc(short(w))}</a>${label ? ` <span class="tag top10" title="your tracked wallet">👁 ${esc(label)}</span>` : ""}`;
 function renderList() {
   const d = cp.data; if (!d) return;
   document.querySelectorAll("[data-cptab]").forEach((b) => b.classList.toggle("on", b.dataset.cptab === cp.tab));
@@ -1151,7 +1151,7 @@ function renderList() {
   if (cp.tab === "traders") {
     const t = d.traders || [];
     $("#cplist").innerHTML = t.length ? `<table class="tlist num"><tr><th>Wallet</th><th class="r">Bought</th><th class="r">Sold</th><th class="r">Still holds</th><th class="r">PnL</th><th class="r">Trades</th></tr>` +
-      t.map((r) => `<tr><td>${wLink(r.wallet)}${tagHtml(r.tags)}</td><td class="r">◎${r.bought.toFixed(2)}</td><td class="r">◎${r.sold.toFixed(2)}</td>
+      t.map((r) => `<tr><td>${wLink(r.wallet, r.label)}${tagHtml(r.tags)}</td><td class="r">◎${r.bought.toFixed(2)}</td><td class="r">◎${r.sold.toFixed(2)}</td>
         <td class="r">${r.left_share > 0.00001 ? `◎${r.left_sol.toFixed(2)} <small class="muted">${pct(r.left_share, 2)}</small>` : '<small class="muted">sold out</small>'}</td>
         <td class="r"><b class="${r.pnl >= 0 ? "green" : "red"}">${r.pnl >= 0 ? "+" : "−"}◎${Math.abs(r.pnl).toFixed(2)}</b></td><td class="r">${r.buys}/${r.sells}</td></tr>`).join("") +
       `</table><div style="color:var(--faint);font-size:11px;padding-top:6px">Best 15 and worst 5 wallets by profit in this coin, from the recorded trades (what is still held is valued at what selling it now would return from the pool, before fees).</div>`
@@ -1170,9 +1170,9 @@ function renderList() {
   $("#cplist").innerHTML = cp.tab === "trades"
     ? `<table class="tlist num"><tr><th>Age</th><th>Type</th><th class="r">MCap</th><th class="r">SOL</th><th class="r">USD</th><th>Wallet</th></tr>` +
       d.trades.map((t) => `<tr class="${t.buy ? "buy" : "sell"}"><td>${secs(now - t.ts)}</td><td class="side">${t.buy ? "Buy" : "Sell"}</td>
-        <td class="r">${usd(t.mcap_usd)}</td><td class="r">${t.sol.toFixed(t.sol < 1 ? 3 : 2)}</td><td class="r">${usd(t.usd)}</td><td>${wLink(t.wallet)}${tagHtml(t.tags)}</td></tr>`).join("") + "</table>"
+        <td class="r">${usd(t.mcap_usd)}</td><td class="r">${t.sol.toFixed(t.sol < 1 ? 3 : 2)}</td><td class="r">${usd(t.usd)}</td><td>${wLink(t.wallet, t.label)}${tagHtml(t.tags)}</td></tr>`).join("") + "</table>"
     : `<table class="tlist num"><tr><th>#</th><th>Wallet</th><th class="r">Share</th><th></th></tr>` +
-      d.holders.map((h, k) => `<tr><td>${k + 1}</td><td>${wLink(h.wallet)}${tagHtml(h.tags)}</td><td class="r">${pct(h.share, 2)}</td>
+      d.holders.map((h, k) => `<tr><td>${k + 1}</td><td>${wLink(h.wallet, h.label)}${tagHtml(h.tags)}</td><td class="r">${pct(h.share, 2)}</td>
         <td><span class="hbar"><i style="width:${Math.min(100, h.share * 100 / Math.max(0.01, d.holders[0].share))}%"></i></span></td></tr>`).join("") +
       `</table><div style="color:var(--faint);font-size:11px;padding-top:6px">From the trades we recorded (transfers are not included, so this can differ from Axiom).</div>`;
 }
@@ -1748,6 +1748,7 @@ const FIELDS = [
               ["alert_watch", "Alerts for watchlist coins outside the filter", "bool", "new / entry alerts for starred coins that don't pass your filter"],
               ["alert_danger", "Danger alerts for coins you hold", "bool", "the dev or a big holder dumps while your wallet holds the coin"],
               ["alert_grad", "Alert when a starred coin graduates", "bool"],
+              ["alert_track", "Alerts for your tracked wallets", "bool", "when a wallet you follow buys or sells (list below)"],
               ["quiet_from", "Quiet hours from", "select", "no new / entry pushes in this window (the page still shows them; price alerts always push)", "", [["-1", "off"]].concat([...Array(24).keys()].map((h) => [String(h), String(h).padStart(2, "0") + ":00"]))],
               ["quiet_to", "Quiet hours until", "select", "", "", [["-1", "off"]].concat([...Array(24).keys()].map((h) => [String(h), String(h).padStart(2, "0") + ":00"]))],
               ["daily_hour", "Daily summary push at", "select", "the last 24 h: signals and how they did, your wallet's realized profit", "", [["-1", "off"]].concat([...Array(24).keys()].map((h) => [String(h), String(h).padStart(2, "0") + ":00"]))],
@@ -1789,6 +1790,10 @@ function settingsHtml(st) {
       <div class="row"><label>Daily summary<small>what the daily push would say right now</small></label><button class="iconbtn" id="sdaily">Preview</button></div>
       <pre id="sdailyout" style="display:none;white-space:pre-wrap;font:12px/1.4 ui-monospace,monospace;color:var(--muted);background:var(--panel2);border-radius:8px;padding:8px;margin:4px 0 0"></pre></div>` +
     FIELDS.map(([t, rows]) => `<div class="sec"><h3>${t}</h3>${rows.map(row).join("")}</div>`).join("") +
+    `<div class="sec"><h3>Tracked wallets</h3><div class="wnote" style="margin-bottom:6px">Get an alert when one of these wallets buys or sells a coin the terminal tracks; their name shows in the coin page's trades and holders.</div>
+      <div id="trklist">${Object.entries(state.tracked || {}).map(([w, l]) => `<div class="row"><label>${esc(l)}<small>${esc(short(w))}</small></label><button class="iconbtn" data-untrack="${esc(w)}">✕</button></div>`).join("") || '<div class="wnote">No wallet yet.</div>'}</div>
+      <div class="row"><input type="text" id="trkaddr" placeholder="Wallet address" style="flex:2;width:auto" autocomplete="off" spellcheck="false">
+        <input type="text" id="trklabel" placeholder="Name" style="flex:1;width:auto" maxlength="32" autocomplete="off"><button class="iconbtn" id="trkadd">Add</button></div></div>` +
     `<div class="sec"><h3>Wallet</h3><div class="row"><label for="s_wallet">Wallet address<small>Public Solana address - balance, positions and profit in the header and on the portfolio page. Never enter a private key.</small></label></div>
       <div class="row"><input type="text" id="s_wallet" style="width:100%" value="${esc((state.wallet || {}).address || "")}" autocomplete="off" spellcheck="false" placeholder="e.g. 7xKX…"></div></div>` +
     `<div class="sec"><h3>Style</h3><div class="presets">${Object.entries(PRESETS).map(([n, c]) =>
@@ -1823,6 +1828,15 @@ function openSettings(st) {
   $("#sbody").innerHTML = settingsHtml(draft);
   $("#settings").classList.add("show");
   $("#stest").onclick = () => $("#testpush").click();
+  const trk = async (wallet, label, on) => {
+    const j = await (await fetch("/api/track", { method: "POST", headers: { "Content-Type": "application/json", ...AH() }, body: JSON.stringify({ wallet, label, on }) })).json();
+    if (!j.ok) return toast(j.error || "Not saved", false);
+    await tick();
+    $("#trklist").innerHTML = Object.entries(state.tracked || {}).map(([w, l]) => `<div class="row"><label>${esc(l)}<small>${esc(short(w))}</small></label><button class="iconbtn" data-untrack="${esc(w)}">✕</button></div>`).join("") || '<div class="wnote">No wallet yet.</div>';
+    toast(on ? "Wallet tracked" : "Wallet removed");
+  };
+  $("#trkadd").onclick = () => { trk($("#trkaddr").value.trim(), $("#trklabel").value.trim(), true); $("#trkaddr").value = ""; $("#trklabel").value = ""; };
+  $("#sbody").onclick = (e) => { const b = e.target.closest("[data-untrack]"); if (b) trk(b.dataset.untrack, "", false); };
   $("#sdaily").onclick = async () => {
     try { const j = await (await fetch("/api/daily/preview", { method: "POST", headers: AH() })).json(); $("#sdailyout").textContent = j.text; $("#sdailyout").style.display = "block"; }
     catch (e) { toast("No connection", false); }
