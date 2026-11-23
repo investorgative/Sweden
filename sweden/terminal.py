@@ -260,8 +260,10 @@ def status(c, vis, why, u):
     """One word for the radar: rec / watch / waiting (passes, not dipped yet) / filtered / mayhem / dead / hidden."""
     if c.mint in u["hide"]:
         return "hidden"
+    if c.mint in u["watch"]:
+        return "watch"
     if vis:
-        return "watch" if c.mint in u["watch"] else "rec"
+        return "rec"
     if why.startswith("not yet"):
         return "waiting"
     if why.startswith("Mayhem"):
@@ -425,18 +427,19 @@ class Terminal:
                 else:
                     st.hi = max(st.hi, p)
                     st.stage = "entry" if p <= st.hi * (1 - s["pullback"]) else "bounce"
-            vis = self.visible(c, uid)[0]
+            vis, watch_only = self.alertable(c, uid)
             if st.fresh:                                # account / settings new while live: no alert storm
                 st.seen, st.fresh = vis, False
                 continue
+            tag = " (watchlist, outside your filter)" if watch_only else ""
             if vis and not st.seen:
                 st.seen = True
                 if s["alert_new"]:
-                    self.alert(c, uid, "new", f"{c.sym} is {dd:.0%} below its top - check the meme")
+                    self.alert(c, uid, "new", f"{c.sym} is {dd:.0%} below its top - check the meme{tag}")
             if vis and st.stage == "entry" and old != "entry" and st.armed:
                 st.entries, st.armed = st.entries + 1, False
                 if s["alert_entry"]:
-                    self.alert(c, uid, "entry", f"{c.sym}: ENTRY - bounced and pulled back {self.mcap_text(c)}")
+                    self.alert(c, uid, "entry", f"{c.sym}: ENTRY - bounced and pulled back {self.mcap_text(c)}{tag}")
 
     def check_px(self, c, mcap_sol):
         """Fire the price / mcap alerts set on this coin (one-shot)."""
@@ -461,6 +464,18 @@ class Terminal:
         m = self.mcap_usd(c)
         return f"(mcap ${m / 1000:.0f}k)" if m else ""
 
+    def alertable(self, c, uid):
+        """(alerts on?, only because it is on the watchlist?): recommended coins, and watchlist coins outside the filter
+        when the user switched that on (still not near the top, not dead, not hidden)."""
+        if self.visible(c, uid)[0]:
+            return True, False
+        u = self.acc.users()[uid]
+        st = c.ust.get(uid)
+        if (u["settings"]["alert_watch"] and c.mint in u["watch"] and c.mint not in u["hide"] and c.grad_ts is not None
+                and c.pool_ok and c.price is not None and st is not None and st.stage not in ("top", "dead")):
+            return True, True
+        return False, False
+
     def visible(self, c, uid):
         """(shown?, reason it is hidden) for one user."""
         u = self.acc.users().get(uid)
@@ -471,8 +486,6 @@ class Terminal:
             return False, "not graduated"
         if c.mint in u["hide"]:
             return False, "hidden by you"
-        if c.mint in u["watch"]:
-            return True, ""
         if time.time() - c.ts > s["max_age_h"] * 3600:
             return False, "older than max age"
         if c.flag and not s["mayhem"]:
@@ -579,7 +592,7 @@ class Terminal:
             self.live = True
             for c in self.coins.values():         # coins already showing at start: no alert storm
                 for uid in self.acc.users():
-                    if uid in c.ust and self.visible(c, uid)[0]:
+                    if uid in c.ust and self.alertable(c, uid)[0]:
                         c.ust[uid].seen = True
         log(f"live: {self.events} events read, {sum(1 for c in self.coins.values() if c.grad_ts)} graduated coins "
             f"in the window, SOL ${self.usd:.0f}")
@@ -630,10 +643,12 @@ class Terminal:
             stage = c.ust[uid].stage if uid in c.ust else "top"
             if c.mint in u["hide"]:
                 return dict(base, tab="hidden", text="Hidden by you")
+            st_txt = {"entry": "ENTRY", "bounce": "bounce", "zone": "in the zone", "dip": "dip"}.get(stage, stage)
+            if c.mint in u["watch"]:
+                return dict(base, tab="watch", text="On your watchlist · " + (f"recommended · {st_txt}" if vis else
+                            "not recommended: " + short_why(c, why, fails_for(c, u["settings"]))))
             if vis:
-                return dict(base, tab="watch" if c.mint in u["watch"] else "all",
-                            text=("On your watchlist · " if c.mint in u["watch"] else "Recommended · ")
-                            + {"entry": "ENTRY", "bounce": "bounce", "zone": "in the zone", "dip": "dip"}.get(stage, stage))
+                return dict(base, tab="all", text="Recommended · " + st_txt)
             return dict(base, tab="filtered", text="Filtered out: " + short_why(c, why, fails_for(c, u["settings"])))
 
     def original(self, mint):
@@ -788,7 +803,7 @@ class Terminal:
                         counts["waiting"] += 1
                 radar.append(dict(mint=c.mint, sym=c.sym, grad_min=(now - c.grad_ts) / 60, mcap_usd=self.mcap_usd(c),
                                   status=status(c, vis, why, u), why=short_why(c, why, fails)))
-                if not vis and not show_all:
+                if not vis and not show_all and c.mint not in u["watch"]:
                     continue
                 f = c.feat or {}
                 low = st.low if st else None
@@ -994,7 +1009,7 @@ def main():
         top10_max=R.FILTER["top10_pct"], sniper_max=R.FILTER["sniper_pct"], dev_max=R.FILTER["dev_pct"],
         prior_max=R.FILTER["max_prior_launches"], copy_check=True, wash_check=True, mayhem=a.mayhem,
         show_dd=a.show_dd, dd_min=a.dd_min, dd_max=a.dd_max, bounce=a.bounce, pullback=a.pullback,
-        alert_new=True, alert_entry=True, ntfy_topic="",
+        alert_new=True, alert_entry=True, alert_watch=True, ntfy_topic="",
         bg="#07080c", panel="#0f1117", text="#e9ecf5", accent="#526fff", radar_mode="radar")
     acc = A.Accounts(os.path.join(R.DATA, "users.db"), os.path.join(R.DATA, "secret.key"), MAIL_FILE, defaults,
                      prefs_file=PREFS_FILE, owner_topic=os.environ.get("SWEDEN_NTFY_TOPIC", ""))

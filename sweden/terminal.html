@@ -1152,9 +1152,9 @@ function inTab(c) {
   if (!matches(c)) return false;
   if (tab === "hidden") return c.user_hidden;
   if (c.user_hidden) return false;
+  if (tab === "watch") return c.watched;                      // starred coins, whether or not they pass the filter
   if (tab === "filtered") return !c.visible;
   if (!c.visible) return false;
-  if (tab === "watch") return c.watched;
   return tab === "all" || c.stage === tab;
 }
 
@@ -1169,7 +1169,7 @@ function render() {
   if (!state) return;
   const s = state.settings;
   $("#rules").textContent = `Recommended: graduated pump.fun coins ≤ ${s.max_age_h} h old, passing the on-chain checks (bundle ≤ ${pct(s.bundle_max, 0)}), ` +
-    `mcap ≤ ${usd(s.max_mcap_usd)}, at least ${pct(s.show_dd, 0)} below their top. Watchlist coins always show. SOL $${state.sol_usd.toFixed(0)}.`;
+    `mcap ≤ ${usd(s.max_mcap_usd)}, at least ${pct(s.show_dd, 0)} below their top. Starred coins are in the Watchlist tab (they only count as recommended if they pass). SOL $${state.sol_usd.toFixed(0)}.`;
   const cs = state.coins.filter(inTab);
   const srch = SEARCH_TABS.includes(tab);
   $("#search").classList.toggle("show", srch);
@@ -1302,7 +1302,8 @@ $("#accresend").onclick = async () => {
 const PCT = ["bundle_max", "top10_max", "sniper_max", "dev_max", "show_dd", "dd_min", "dd_max", "bounce", "pullback"];
 const FIELDS = [
   ["Alerts", [["ntfy_topic", "ntfy topic", "text", "Your own topic in the ntfy app (letters, digits, - and _)"],
-              ["alert_new", "Alert: new coin to check", "bool"], ["alert_entry", "Alert: entry signal", "bool"]]],
+              ["alert_new", "Alert: new coin to check", "bool"], ["alert_entry", "Alert: entry signal", "bool"],
+              ["alert_watch", "Alerts for watchlist coins outside the filter", "bool", "new / entry alerts for starred coins that don't pass your filter"]]],
   ["Filter", [["max_age_h", "Max coin age", "num", "", "h"], ["max_mcap_usd", "Max market cap", "num", "", "$"],
               ["bundle_max", "Max bundle", "num", "launch-slot buyers at graduation", "%"], ["top10_max", "Max top 10 holders", "num", "", "%"],
               ["sniper_max", "Max snipers", "num", "", "%"], ["dev_max", "Dev holding limit", "num", "only colours the tile", "%"],
