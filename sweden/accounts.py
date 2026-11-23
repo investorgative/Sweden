@@ -29,7 +29,8 @@ NUMERIC = dict(max_age_h=(float, 0.5, 24), max_mcap_usd=(float, 1000, 1e9), bund
                top10_max=(float, 0, 1), sniper_max=(float, 0, 1), dev_max=(float, 0, 1), prior_max=(int, 0, 100),
                show_dd=(float, 0, 0.9), dd_min=(float, 0.01, 0.95), dd_max=(float, 0.05, 0.99),
                bounce=(float, 0.01, 5), pullback=(float, 0.01, 0.9),
-               quiet_from=(int, -1, 23), quiet_to=(int, -1, 23), tz_min=(int, -840, 840), daily_hour=(int, -1, 23))
+               quiet_from=(int, -1, 23), quiet_to=(int, -1, 23), tz_min=(int, -840, 840), daily_hour=(int, -1, 23),
+               font_scale=(float, 0.8, 1.4))
 BOOLS = ("copy_check", "wash_check", "mayhem", "alert_new", "alert_entry", "alert_watch", "alert_danger", "alert_grad")
 COLORS = ("bg", "panel", "text", "accent")
 

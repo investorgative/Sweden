@@ -244,7 +244,7 @@
   .tag { display: inline-block; font-size: 9px; font-weight: 800; letter-spacing: .4px; padding: 1px 5px; border-radius: 4px; margin-left: 4px;
          vertical-align: middle; text-transform: uppercase; }
   .tag.dev { background: rgba(236,57,122,.18); color: var(--red); } .tag.bundler { background: rgba(167,139,250,.18); color: var(--purple); }
-  .tag.sniper { background: rgba(255,138,61,.18); color: var(--orange); } .tag.top10 { background: color-mix(in srgb, var(--blue) 20%, transparent); color: var(--blue); }
+  .tag.sniper { background: rgba(255,138,61,.18); color: var(--orange); } .tag.toppnl { background: rgba(245,194,73,.18); color: var(--yellow); } .tag.top10 { background: color-mix(in srgb, var(--blue) 20%, transparent); color: var(--blue); }
   .hbar { height: 4px; background: var(--panel3); border-radius: 2px; overflow: hidden; width: 80px; display: inline-block; vertical-align: middle; }
   .hbar i { display: block; height: 100%; background: var(--blue); }
   .axrow2 { display: flex; gap: 6px; }
@@ -515,7 +515,7 @@
 <div id="settings"><div class="shade" data-close="1"></div><div class="drawer">
   <div class="dhead"><b>Settings</b><button class="iconbtn" data-close="1" aria-label="Close">✕</button></div>
   <div class="dbody" id="sbody"></div>
-  <div class="dfoot"><button type="button" id="sreset">My defaults</button><button type="button" class="save" id="ssave">Save</button></div>
+  <div class="dfoot"><button type="button" id="sreset">My defaults</button><button type="button" id="swhatif" title="Replay these settings over the last hours">Test</button><button type="button" class="save" id="ssave">Save</button></div>
 </div></div>
 <div id="login"><form id="loginform" autocomplete="off">
   <div class="logo" style="font-size:20px">🇸🇪 Sweden terminal</div>
@@ -694,6 +694,7 @@ function card(c) {
   if (m.website && safeUrl(m.website)) links.push(["Website", safeUrl(m.website)]);
   const badges = `<span class="badge b-${c.stage}">${LABEL[c.stage]}</span>` + (c.watched ? '<span class="badge b-watch">★ Watchlist</span>' : "") +
     (c.mayhem ? '<span class="badge b-mayhem">Mayhem</span>' : "") +
+    (c.smart ? `<span class="badge b-mine" title="Wallets with the most realized profit over the last 24 h that hold this coin">👑 ${c.smart} top-PnL wallet${c.smart === 1 ? "" : "s"}</span>` : "") +
     (c.mine && c.mine.amount > 0 ? `<span class="badge b-mine">◎ You hold ${money(c.mine.value_usd)}${c.mine.pnl != null ? ` · <span class="${c.mine.pnl >= 0 ? "green" : "red"}">${c.mine.pnl >= 0 ? "+" : "−"}${Math.abs(c.mine.pnl * 100).toFixed(0)}%</span>` : ""}</span>` : "") +
     (!c.visible ? `<span class="why">${esc(c.hidden)}</span>` : "");
   const lastCls = c.last_trade_s == null ? "" : c.last_trade_s > 600 ? "red" : c.last_trade_s < 60 ? "green" : "";
@@ -1115,7 +1116,7 @@ function renderCalc() {                                      // buy now and sell
     ["Price impact", pctTxt(avgMc / i.mcap_usd - 1, 1)], ["Sell right back", `${pctTxt(rt, 1)} <small class="muted">fees ${(fee * 100).toFixed(2)}% ×2 + network fees (the slippage cancels out)</small>`],
     ["Break-even mcap", `≈ ${usd(i.mcap_usd / (1 + rt))}`]].map(([k, v]) => `<span>${k}</span><b>${v}</b>`).join("");
 }
-const tagHtml = (t) => (t || []).map((x) => `<span class="tag ${x}">${x === "bundler" ? "bundle" : x}</span>`).join("");
+const tagHtml = (t) => (t || []).map((x) => `<span class="tag ${x}">${x === "bundler" ? "bundle" : x === "toppnl" ? "top pnl" : x}</span>`).join("");
 const wLink = (w) => `<a href="https://solscan.io/account/${esc(w)}" target="_blank" rel="noopener noreferrer">${esc(short(w))}</a>`;
 function renderList() {
   const d = cp.data; if (!d) return;
@@ -1205,7 +1206,7 @@ function showWallet() {
       <div class="legend"><span><i style="background:var(--blue)"></i>Equity without hidden tokens (since the wallet was added)</span><span><i style="background:var(--yellow)"></i>Cash (SOL, rebuilt from the history)</span></div>
       <div id="wchart"><div class="msg">Loading…</div></div>
       <div class="cp-box"><div class="cp-tabs" style="align-items:center"><button class="tab" data-wtab="open">Open positions</button><button class="tab" data-wtab="closed">Closed</button>
-        <button class="tab" data-wtab="txs">Transactions</button><span class="spacer"></span><span id="wpopts" style="display:flex;gap:12px"><label class="wnote" id="wphidlbl"><input type="checkbox" id="wphid"> show hidden <span id="wphidn"></span></label>
+        <button class="tab" data-wtab="txs">Transactions</button><span class="spacer"></span><button class="iconbtn" id="wpcsv" title="Download this tab as CSV">CSV</button><span id="wpopts" style="display:flex;gap:12px"><label class="wnote" id="wphidlbl"><input type="checkbox" id="wphid"> show hidden <span id="wphidn"></span></label>
         <label class="wnote"><input type="checkbox" id="wpdust"> show dust</label></span></div>
         <div class="tlwrap" id="wplist"></div></div>
       <div class="wnote" id="wpnote"></div></div>`;
@@ -1215,6 +1216,17 @@ function showWallet() {
   el.querySelectorAll("[data-wtab]").forEach((b) => b.onclick = () => { wp.tab = b.dataset.wtab; renderWalletList(); });
   $("#wpdust").onchange = (e) => { wp.dust = e.target.checked; renderWalletList(); };
   $("#wphid").onchange = (e) => { wp.hidden = e.target.checked; renderWalletList(); };
+  $("#wpcsv").onclick = () => {
+    const d = wp.data; if (!d || !d.open) return;
+    if (wp.tab === "txs") downloadCsv("sweden-transactions.csv", ["time", "type", "token", "mint", "amount", "sol", "usdc", "signature"],
+      d.txs.map((t) => [new Date(t.ts * 1000).toISOString(), t.kind, t.sym || "", t.mint || "", t.amount ?? "", t.sol.toFixed(6), t.usdc ?? "", t.sig]));
+    else if (wp.tab === "closed") downloadCsv("sweden-closed-positions.csv", ["token", "mint", "bought_sol", "sold_sol", "pnl_sol", "pnl_pct", "buys", "sells", "last"],
+      d.closed.map((r) => [r.sym || "", r.mint, r.cost_sol.toFixed(4), r.proceeds_sol.toFixed(4), r.pnl_sol == null ? "" : r.pnl_sol.toFixed(4),
+        r.pnl_pct == null ? "" : (r.pnl_pct * 100).toFixed(1), r.buys, r.sells, r.last ? new Date(r.last * 1000).toISOString() : ""]));
+    else downloadCsv("sweden-open-positions.csv", ["token", "mint", "amount", "value_usd", "cost_sol", "unrealized_sol", "hidden"],
+      d.open.map((r) => [r.sym || "", r.mint, r.amount, r.value_usd == null ? "" : r.value_usd.toFixed(2), r.cost_open_sol == null ? "" : r.cost_open_sol.toFixed(4),
+        r.unreal_sol == null ? "" : r.unreal_sol.toFixed(4), r.hidden ? 1 : 0]));
+  };
   loadLW().then(buildWChart, () => {});
   wpRefresh(); wp.timer = setInterval(wpRefresh, 10000);
 }
@@ -1324,7 +1336,13 @@ function renderWalletList() {
 }
 
 // ---------- signals page (#signals): how did the recommendations and entry signals do? ----------
-const sg = { open: false, kind: "all", days: 7, watch: false, data: null, timer: null };
+const sg = { open: false, kind: "all", days: 7, watch: false, data: null, timer: null, view: "signals", wallets: null };
+function downloadCsv(name, head, rows) {                      // a file to open in Excel / Google Sheets
+  const q = (v) => /[",\n;]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v ?? "");
+  const blob = new Blob([[head, ...rows].map((r) => r.map(q).join(",")).join("\n")], { type: "text/csv" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
 const pctTxt = (x, d = 0) => x == null ? "–" : `<span class="${x >= 0 ? "green" : "red"}">${x >= 0 ? "+" : "−"}${Math.abs(x * 100).toFixed(d)}%</span>`;
 function showSignals() {
   if (sg.open) return;
@@ -1334,9 +1352,11 @@ function showSignals() {
       <div class="title"><div class="name"><span>Signals</span></div><div class="sub">How your recommendations and entry signals did afterwards</div></div>
       <button class="iconbtn" data-pastebtn="1" title="Open a coin from the clipboard">${ic("paste")}</button></div>
     <div class="wp-body">
-      <div class="cp-tools"><div class="seg" id="sgkind"><button data-sgk="all" class="on">All</button><button data-sgk="new">Recommended</button><button data-sgk="entry">Entry</button></div>
+      <div class="cp-tools"><div class="seg" id="sgview"><button data-sgv="signals" class="on">Signals</button><button data-sgv="wallets">Top wallets (24 h)</button></div></div>
+      <div class="cp-tools" id="sgtools"><div class="seg" id="sgkind"><button data-sgk="all" class="on">All</button><button data-sgk="new">Recommended</button><button data-sgk="entry">Entry</button></div>
         <div class="seg" id="sgdays"><button data-sgd="1">24 h</button><button data-sgd="7" class="on">7 d</button><button data-sgd="30">30 d</button></div>
-        <label class="wnote"><input type="checkbox" id="sgwatch"> include watchlist-only signals</label></div>
+        <label class="wnote"><input type="checkbox" id="sgwatch"> include watchlist-only signals</label><span class="spacer"></span>
+        <button class="iconbtn" id="sgcsv" title="Download as CSV">CSV</button></div>
       <div class="sgsum" id="sgsum"></div>
       <div class="cp-box"><div class="tlwrap" id="sglist"></div></div>
       <div class="wnote">Raw market-cap moves after the moment of the signal - no fees, no slippage, no delay, so a real trade does worse.
@@ -1347,6 +1367,10 @@ function showSignals() {
   el.querySelectorAll("[data-sgk]").forEach((b) => b.onclick = () => { sg.kind = b.dataset.sgk; markSeg("#sgkind", b); renderSignals(); });
   el.querySelectorAll("[data-sgd]").forEach((b) => b.onclick = () => { sg.days = +b.dataset.sgd; markSeg("#sgdays", b); sgRefresh(); });
   $("#sgwatch").onchange = (e) => { sg.watch = e.target.checked; renderSignals(); };
+  el.querySelectorAll("[data-sgv]").forEach((b) => b.onclick = () => { sg.view = b.dataset.sgv; markSeg("#sgview", b); renderSignals(); if (sg.view === "wallets") loadTopWallets(); });
+  $("#sgcsv").onclick = () => downloadCsv("sweden-signals.csv", ["time", "coin", "mint", "type", "mcap_usd", "best_pct", "worst_pct", "now_pct", "first_35"],
+    (sg.data?.signals || []).map((r) => [new Date(r.ts * 1000).toISOString(), r.sym, r.mint, r.kind, (r.mcap_sol * r.sol_usd).toFixed(0),
+      (r.max_pct * 100).toFixed(1), (r.min_pct * 100).toFixed(1), (r.last_pct * 100).toFixed(1), (r.firsts["35"] || ["open"])[0]]));
   sgRefresh(); sg.timer = setInterval(sgRefresh, 30000);
 }
 function hideSignals() {
@@ -1355,6 +1379,7 @@ function hideSignals() {
   $("#sigpage").classList.remove("show"); $("#sigpage").innerHTML = ""; document.body.style.overflow = "";
 }
 async function sgRefresh() {
+  if (sg.view === "wallets") loadTopWallets();
   try {
     const r = await fetch("/api/signals?days=" + sg.days, { headers: AH() });
     if (r.status === 401) return on401(r);
@@ -1362,21 +1387,41 @@ async function sgRefresh() {
   } catch (e) { return; }
   renderSignals();
 }
+async function loadTopWallets() {
+  try { sg.wallets = (await (await fetch("/api/topwallets", { headers: AH() })).json()).wallets; } catch (e) { return; }
+  renderSignals();
+}
 function renderSignals() {
   const d = sg.data; if (!d || !sg.open) return;
+  $("#sgtools").hidden = sg.view === "wallets";
+  if (sg.view === "wallets") {
+    const ws = sg.wallets || [];
+    $("#sgsum").innerHTML = "";
+    $("#sglist").innerHTML = ws.length ? `<div class="wnote" style="padding:2px 0 8px">Wallets that realized the most profit over the last 24 h across the coins the terminal tracks (sold in at least 3 coins). Many are bots or insiders - in our tests, copying profitable wallets did not work because they are faster. Use it as information: who is in a coin.</div>
+      <table class="tlist num"><tr><th>#</th><th>Wallet</th><th class="r">Realized</th><th class="r">Coins</th><th class="r">Win rate</th><th class="r">Volume</th><th>Best coin</th></tr>` +
+      ws.map((p, k) => `<tr><td>${k + 1}</td><td>${wLink(p.wallet)}${p.dev_of.length ? ` <span class="tag dev" title="dev of ${esc(p.dev_of.join(", "))}">dev</span>` : ""}${p.bot ? ' <span class="tag sniper" title="100+ coins in 24 h">bot</span>' : ""}</td>
+        <td class="r"><b class="${p.pnl >= 0 ? "green" : "red"}">${p.pnl >= 0 ? "+" : "−"}◎${Math.abs(p.pnl).toFixed(2)}</b></td><td class="r">${p.coins}</td>
+        <td class="r">${Math.round(p.wins / p.coins * 100)}%</td><td class="r">◎${p.volume.toFixed(0)}</td><td>$${esc(p.best || "")}</td></tr>`).join("") + "</table>"
+      : '<div class="empty">Computing… (every 5 minutes, from the coins in memory)</div>';
+    return;
+  }
   const rows = d.signals.filter((r) => (sg.kind === "all" || r.kind === sg.kind) && (sg.watch || !r.watch_only));
-  const card = (title, s) => {
-    if (!s) return `<div class="cp-box"><h4>${title}</h4><div class="wnote">No signals yet in this period.</div></div>`;
+  const card = sigCard;
+  $("#sgsum").innerHTML = card("Recommended (new)", d.summary.new) + card("Entry signals", d.summary.entry);
+  renderSignalRows(rows, "#sglist");
+}
+function sigCard(title, s) {
+    if (!s) return `<div class="cp-box"><h4>${title}</h4><div class="wnote">No signals in this period.</div></div>`;
     const lv = Object.entries(s.levels).map(([k, v]) => { const dec = v.tp + v.sl;
       return `<div class="lvrow"><span>±${k} %</span><span class="lvbar"><i class="g" style="width:${dec ? v.tp / dec * 100 : 0}%"></i></span>
         <b>${dec ? Math.round(v.tp / dec * 100) + "%" : "–"}</b><small>${v.tp} up first · ${v.sl} down first${v.open ? ` · ${v.open} open` : ""}</small></div>`; }).join("");
     return `<div class="cp-box"><h4>${title} <span class="muted" style="text-transform:none;letter-spacing:0">${s.n} signal${s.n === 1 ? "" : "s"}</span></h4>
       <div class="kv num" style="margin-bottom:10px"><span>Median best move after</span><b>${pctTxt(s.med_max)}</b><span>Median worst move after</span><b>${pctTxt(s.med_min)}</b>
         <span>Median now / at the end</span><b>${pctTxt(s.med_last)}</b></div>${lv}</div>`;
-  };
-  $("#sgsum").innerHTML = card("Recommended (new)", d.summary.new) + card("Entry signals", d.summary.entry);
+}
+function renderSignalRows(rows, sel) {
   const now = Date.now() / 1000;
-  $("#sglist").innerHTML = rows.length ? `<table class="tlist num"><tr><th>When</th><th>Coin</th><th>Type</th><th class="r">MCap then</th><th class="r">Best</th><th class="r">Worst</th><th class="r">Now / end</th><th class="r">First ±35 %</th></tr>` +
+  $(sel).innerHTML = rows.length ? `<table class="tlist num"><tr><th>When</th><th>Coin</th><th>Type</th><th class="r">MCap then</th><th class="r">Best</th><th class="r">Worst</th><th class="r">Now / end</th><th class="r">First ±35 %</th></tr>` +
     rows.map((r) => { const f = r.firsts["35"];
       return `<tr><td>${secs(now - r.ts)} ago</td><td data-open="${esc(r.mint)}" style="cursor:pointer"><b>$${esc(r.sym)}</b>${r.watch_only ? ' <span class="tag top10">watch</span>' : ""}</td>
         <td>${r.kind === "entry" ? "🟢 Entry" : "🔔 New"}</td><td class="r">${usd(r.mcap_sol * r.sol_usd)}</td>
@@ -1643,10 +1688,11 @@ const MODES = [["radar", "Radar", "dots on rings, sweep"], ["pulse", "Live feed"
                ["grid", "Heat grid", "one tile per coin"], ["off", "Off", "nothing, just the cards"]];
 let draft = null, styleKey = "";
 function applyStyle(st) {
-  const k = [st.bg, st.panel, st.text, st.accent].join();
+  const k = [st.bg, st.panel, st.text, st.accent, st.font_scale].join();
   if (k === styleKey) return; styleKey = k;
   const r = document.documentElement.style;
   r.setProperty("--bg", st.bg); r.setProperty("--panel", st.panel); r.setProperty("--text", st.text); r.setProperty("--blue", st.accent);
+  document.body.style.zoom = st.font_scale && st.font_scale !== 1 ? st.font_scale : "";
   document.querySelector('meta[name="theme-color"]').content = st.bg;
 }
 function settingsHtml(st) {
@@ -1668,7 +1714,9 @@ function settingsHtml(st) {
       `<button type="button" data-preset="${n}"><i style="background:${c[0]}"></i><i style="background:${c[3]}"></i>${n}</button>`).join("")}</div>` +
     [["bg", "Background"], ["panel", "Cards"], ["text", "Text"], ["accent", "Accent"]].map(([k, l]) =>
       `<div class="row"><label for="s_${k}">${l}</label><input type="color" id="s_${k}" value="${st[k]}"></div>`).join("") + `</div>` +
-    `<div class="sec"><h3>Layout</h3><div class="row"><label for="s_card_view">Coins as<small>big cards, or one compact row per coin</small></label>
+    `<div class="sec"><h3>Layout</h3><div class="row"><label for="s_font_scale">Text size</label>
+      <select id="s_font_scale">${[[0.9, "Small"], [1, "Normal"], [1.1, "Large"], [1.25, "Extra large"]].map(([v, l]) => `<option value="${v}"${(st.font_scale || 1) == v ? " selected" : ""}>${l}</option>`).join("")}</select></div>
+      <div class="row"><label for="s_card_view">Coins as<small>big cards, or one compact row per coin</small></label>
       <select id="s_card_view"><option value="cards"${st.card_view !== "list" ? " selected" : ""}>Cards</option><option value="list"${st.card_view === "list" ? " selected" : ""}>List</option></select></div></div>` +
     `<div class="sec"><h3>Empty screen</h3><div class="modes">${MODES.map(([k, l, d]) =>
       `<button type="button" data-mode="${k}" class="${st.radar_mode === k ? "on" : ""}">${l}<small>${d}</small></button>`).join("")}</div></div>`;
@@ -1684,6 +1732,7 @@ function readSettings() {
   }));
   ["bg", "panel", "text", "accent"].forEach((k) => out[k] = $("#s_" + k).value);
   if ($("#s_card_view")) out.card_view = $("#s_card_view").value;
+  if ($("#s_font_scale")) out.font_scale = +$("#s_font_scale").value;
   out.tz_min = -new Date().getTimezoneOffset();               // quiet hours in your local time
   return out;
 }
@@ -1730,6 +1779,19 @@ $("#ssave").onclick = async () => {
     state.settings = j.settings; styleKey = ""; applyStyle(j.settings);
     closeSettings(false); toast("Settings saved"); tick();
   } catch (e) { toast("Not saved", false); }
+};
+$("#swhatif").onclick = async () => {                       // replay the (unsaved) settings over the coins in memory
+  const st = readSettings();
+  let box = $("#swhatifout");
+  if (!box) { $("#sbody").insertAdjacentHTML("afterbegin", '<div class="sec" id="swhatifout"></div>'); box = $("#swhatifout"); }
+  box.innerHTML = '<div class="wnote">Replaying…</div>'; $("#sbody").scrollTop = 0;
+  try {
+    const d = await (await fetch("/api/whatif", { method: "POST", headers: { "Content-Type": "application/json", ...AH() }, body: JSON.stringify({ settings: st }) })).json();
+    box.innerHTML = `<h3>Test of these settings · last ~${d.hours} h · ${d.coins} graduates</h3>` + sigCard("Would have been recommended", d.summary.new) +
+      sigCard("Entry signals", d.summary.entry) + `<div class="tlwrap" id="swhatiflist" style="margin-top:8px"></div>
+      <div class="wnote" style="margin-top:6px">Raw market-cap moves after each signal (no fees, no delay), only the coins still in memory. A small sample: use it to compare settings, not as proof.</div>`;
+    renderSignalRows(d.signals, "#swhatiflist");
+  } catch (e) { box.innerHTML = '<div class="wnote red">Test failed</div>'; }
 };
 $("#sreset").onclick = () => {                              // the starting settings (your ntfy topic stays); Save to keep
   if (!state) return;

@@ -310,6 +310,7 @@ class Terminal:
         self.started = time.time()
         self.events = 0
         self.seq = 0
+        self.smart_list, self.smart_set = [], set()
         self._watched = set()
 
     # ---------- data ----------
@@ -599,6 +600,106 @@ class Terminal:
         ok = self.push(topic, "test", None, "Test from the Sweden terminal - push works")
         return ok, "test alert + push sent - check your phone" if ok else "push failed (see logs/terminal.log)"
 
+    def smart_worker(self):
+        """Every 5 min: the wallets with the most realized profit over the last 24 h across the coins in memory
+        (sold in >= 3 coins). Information only - copying such wallets did not work in our tests (speed)."""
+        while True:
+            time.sleep(30 if not self.smart_list else 300)
+            if not self.live:
+                continue
+            cut = time.time() - 86400
+            with self.lock:
+                snap = [(list(c.trades), set(c.H.devs), c.mint, c.sym, bool(c.flag)) for c in self.coins.values() if c.trades]
+            per, devof = {}, {}
+            for trades, devs, mint, sym, mayhem in snap:
+                w_coin = {}
+                for x in trades:
+                    if x[2] < cut:
+                        continue
+                    a = w_coin.setdefault(x[6], [0.0, 0.0, 0, 0])     # bought SOL, sold SOL, bought tok, sold tok
+                    if x[5]:
+                        a[0] += x[4] / 1e9; a[2] += x[7]
+                    else:
+                        a[1] += x[4] / 1e9; a[3] += x[7]
+                for w, (b, sd, bt, st_) in w_coin.items():
+                    if w in devs:
+                        devof.setdefault(w, set()).add(sym)
+                    if sd <= 0 or bt <= 0:
+                        continue
+                    realized = sd - b * min(1.0, st_ / bt)
+                    p = per.setdefault(w, dict(wallet=w, pnl=0.0, coins=0, wins=0, volume=0.0, best=None, best_pnl=-1e18, mayhem=0))
+                    p["pnl"] += realized; p["coins"] += 1; p["wins"] += realized > 0; p["volume"] += b + sd; p["mayhem"] += mayhem
+                    if realized > p["best_pnl"]:
+                        p["best"], p["best_pnl"] = sym, realized
+            # pump.fun's Mayhem agent (trades nearly only Mayhem coins) is the protocol, not a trader: left out
+            top = sorted((p for p in per.values() if p["coins"] >= 3 and p["mayhem"] < 0.8 * p["coins"]), key=lambda p: -p["pnl"])[:50]
+            for p in top:
+                p["dev_of"] = sorted(devof.get(p["wallet"], []))[:3]
+                p["bot"] = p["coins"] >= 100                     # 100+ coins in 24 h: a bot
+            self.smart_list, self.smart_set = top, {p["wallet"] for p in top if p["pnl"] > 0}
+
+    def whatif(self, uid, new_settings):
+        """Replay settings (saved or not) over the graduates in memory (~6.5 h, plus watchlist coins): when would each
+        coin have become recommended / reached the entry signal, and how did it move afterwards (raw mcap, no fees)."""
+        s = A.clean_settings(new_settings if isinstance(new_settings, dict) else {}, self.acc.users()[uid]["settings"])
+        with self.lock:
+            coins = [(c.mint, c.sym, c.ts, c.flag, fails_for(c, s), c.grad_ts, sorted((x for x in c.trades if x[8]), key=lambda x: (x[0], x[1])))
+                     for c in self.coins.values() if c.grad_ts and c.pool_ok]
+        usd, out = self.usd or 0, []
+        for mint, sym, ts0, flag, fails, gts, tr in coins:
+            if fails is None or fails or (flag and not s["mayhem"]) or len(tr) < 2:
+                continue
+            peak, low, hi, mode, stage, new_at, entry_at = 0.0, None, None, "top", "top", None, None
+            for i, x in enumerate(tr):
+                p = x[3]
+                if x[2] - ts0 > s["max_age_h"] * 3600:
+                    break
+                if p > peak:
+                    peak, low, hi, mode = p, None, None, "top"
+                dd = 1 - p / peak
+                if dd > s["dd_max"]:
+                    stage = "dead"
+                elif mode in ("top", "drop"):
+                    if dd >= s["dd_min"]:
+                        low = p if low is None else min(low, p)
+                        mode, stage = "drop", "zone"
+                        if p >= low * (1 + s["bounce"]):
+                            mode, stage, hi = "bounce", "bounce", p
+                    else:
+                        stage = "dip" if dd >= s["show_dd"] else "top"
+                else:
+                    if p < low:
+                        low, mode, stage = p, "drop", "zone"
+                    else:
+                        hi = max(hi, p)
+                        stage = "entry" if p <= hi * (1 - s["pullback"]) else "bounce"
+                ok = stage not in ("top", "dead") and (not usd or p * usd <= s["max_mcap_usd"])
+                if ok and new_at is None:
+                    new_at = i
+                if ok and stage == "entry" and entry_at is None:
+                    entry_at = i
+                    break
+            for kind, at in (("new", new_at), ("entry", entry_at)):
+                if at is None:
+                    continue
+                e, rest = tr[at][3], tr[at + 1:]
+                hi_ = max((x[3] for x in rest), default=e)
+                lo_ = min((x[3] for x in rest), default=e)
+                first = {}
+                for x in rest:
+                    for lv in SG.LEVELS:
+                        k = str(int(lv * 100))
+                        if k not in first:
+                            if x[3] >= e * (1 + lv):
+                                first[k] = ["tp", x[2] - tr[at][2]]
+                            elif x[3] <= e * (1 - lv):
+                                first[k] = ["sl", x[2] - tr[at][2]]
+                out.append(dict(mint=mint, sym=sym, kind=kind, watch_only=0, ts=tr[at][2], mcap_sol=e, sol_usd=usd,
+                                max_pct=hi_ / e - 1, min_pct=lo_ / e - 1, last_pct=(rest[-1][3] if rest else e) / e - 1,
+                                firsts=first, done=1))
+        out.sort(key=lambda r: -r["ts"])
+        return dict(signals=out, summary=SG.Signals.summary(out), coins=len(coins), hours=round(self.a.max_age / 3600 + 0.5, 1))
+
     def daily_text(self, uid):
         """The last 24 h in a few lines: signals and how they did, the wallet's realized profit."""
         rows = self.signals.list(uid, 1)
@@ -824,6 +925,8 @@ class Terminal:
                 out.append("sniper")
             if w in top10:
                 out.append("top10")
+            if w in self.smart_set:
+                out.append("toppnl")
             return out
         return tags
 
@@ -996,7 +1099,8 @@ class Terminal:
                                 prior=f.get("prior_launches"), copy=f.get("copy"), dev_sold=f.get("dev_sold"),
                                 traders=f.get("traders")),
                     live=c.H.metrics(), meta=c.meta or {}, mine=self.mine(brief, c.mint, self.mcap_usd(c)),
-                    note=u["notes"].get(c.mint)))
+                    note=u["notes"].get(c.mint),
+                    smart=sum(1 for w in self.smart_set if c.H.hold.get(w, 0) > 0)))
             alerts = list(self.alerts[uid])
         self.wallets.touch(uid)
         return dict(now=now, live=self.live, sol_usd=self.usd, coins=out, alerts=alerts, all=show_all, counts=counts,
@@ -1085,6 +1189,8 @@ def serve(t, port):
                 days = min(30, max(1, int(q.get("days", ["7"])[0]) if q.get("days", ["7"])[0].isdigit() else 7))
                 rows = t.signals.list(uid, days)
                 self.send(200, {"signals": rows[:500], "summary": t.signals.summary(rows), "sol_usd": t.usd})
+            elif u.path == "/api/topwallets":
+                self.send(200, {"wallets": t.smart_list})
             elif u.path == "/api/wallet":
                 t.wallets.touch(uid)
                 self.send(200, t.wallets.full(uid))
@@ -1140,6 +1246,8 @@ def serve(t, port):
                     return self.send(200, {"ok": True, "alerts": acc.px_list(uid)})
                 except (KeyError, TypeError, ValueError):
                     return self.send(400, {"ok": False})
+            if p == "/api/whatif":
+                return self.send(200, t.whatif(uid, b.get("settings")))
             if p == "/api/daily/preview":
                 return self.send(200, {"text": t.daily_text(uid)})
             if p == "/api/note":
@@ -1198,7 +1306,7 @@ def main():
         prior_max=R.FILTER["max_prior_launches"], copy_check=True, wash_check=True, mayhem=a.mayhem,
         show_dd=a.show_dd, dd_min=a.dd_min, dd_max=a.dd_max, bounce=a.bounce, pullback=a.pullback,
         alert_new=True, alert_entry=True, alert_watch=True, alert_danger=True, alert_grad=True, ntfy_topic="", quiet_from=-1, quiet_to=-1, tz_min=0,
-        sound="chime", card_view="cards", daily_hour=-1,
+        sound="chime", card_view="cards", daily_hour=-1, font_scale=1.0,
         bg="#07080c", panel="#0f1117", text="#e9ecf5", accent="#526fff", radar_mode="radar")
     acc = A.Accounts(os.path.join(R.DATA, "users.db"), os.path.join(R.DATA, "secret.key"), MAIL_FILE, defaults,
                      prefs_file=PREFS_FILE, owner_topic=os.environ.get("SWEDEN_NTFY_TOPIC", ""))
@@ -1206,7 +1314,7 @@ def main():
     t.signals = SG.Signals(os.path.join(R.DATA, "signals.db"))
     t.wallets = WL.Wallets(os.path.join(R.DATA, "wallets.db"), HELIUS_KEY_FILE, t.token_price)
     t.wallets.sol_usd = lambda: t.usd
-    for target in (t.loop, t.meta_worker, t.price_worker, t.link_worker, t.wallets.worker, t.daily_worker):
+    for target in (t.loop, t.meta_worker, t.price_worker, t.link_worker, t.wallets.worker, t.daily_worker, t.smart_worker):
         threading.Thread(target=target, daemon=True).start()
     log(f"SWEDEN terminal on http://0.0.0.0:{a.port}  ({len(acc.users())} account(s), "
         f"mail: {'Gmail' if acc.mailer.cfg else 'not set up - codes go to this log'}, "
