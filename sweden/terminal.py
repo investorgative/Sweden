@@ -36,6 +36,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 sys.path.insert(0, os.path.dirname(__file__))
 import accounts as A
+import journal as JN
 import replay as R
 import signals as SG
 import wallet as WL
@@ -47,6 +48,7 @@ HISTORY_S = 72 * 3600                    # creator history (24 h) and copied nam
 AXIOM_FILE = os.path.join(R.DATA, "axiom_checks.jsonl")
 PREFS_FILE = os.path.join(R.DATA, "terminal_prefs.json")
 PASSKEY_FILE = os.path.join(HERE, "..", "terminal_passkey")
+JOURNAL_DIST = os.path.join(HERE, "..", "journal", "dist")
 HELIUS_KEY_FILE = os.environ.get("SWEDEN_HELIUS_KEY_FILE") or os.path.join(HERE, "..", "helius_key")
 MAIL_FILE = os.environ.get("SWEDEN_MAIL_FILE") or os.path.join(HERE, "..", "gmail.json")   # tests: SWEDEN_MAIL_FILE=none
 TUNNEL_LOG = os.environ.get("SWEDEN_TUNNEL_LOG") or os.path.join(HERE, "..", "logs", "tunnel.log")   # tests: =none
@@ -834,6 +836,42 @@ class Terminal:
         self.linked_cache[mint] = (time.time(), out)
         return out
 
+    def journal_worker(self):
+        """Every 5 min: keep the market-cap path of each user's closed round trips while the coin is still in memory
+        (local data only, no Helius calls)."""
+        first = True
+        while True:
+            time.sleep(60 if first else 300)
+            if not self.live:
+                continue
+            first = False
+            for uid in list(self.acc.users()):
+                try:
+                    if self.wallets.address(uid):
+                        rts, _ = self.journal.round_trips(self.wallets, uid, self.usd)
+                        self.journal.update_paths(rts[-200:], self.coins, self.lock)
+                        self.journal.update_meta(rts, self.wallets)
+                except Exception as e:
+                    log("journal:", repr(e))
+
+    def journal_circle(self, uid):
+        """Friends who share their journal score (opt-in): name, score, level, win rate, streak - never amounts."""
+        users, out = self.acc.users(), []
+        for u2, (d, ts) in self.journal.circle().items():
+            if u2 not in users:
+                continue
+            s = users[u2].get("settings", {})
+            name = s.get("display_name") or users[u2]["email"].split("@")[0]
+            out.append(dict(d, name=name[:40], me=u2 == uid, ts=ts))
+        return out
+
+    def held_mints(self):
+        """Coins in any user's wallet: kept in memory like watchlist coins (for the portfolio and the journal)."""
+        out = set()
+        for lv in list(self.wallets.live.values()):
+            out |= set((lv or {}).get("tokens") or {})
+        return out
+
     def smart_worker(self):
         """Every 5 min: the wallets with the most realized profit over the last 24 h across the coins in memory
         (sold in >= 3 coins). Information only - copying such wallets did not work in our tests (speed)."""
@@ -1057,7 +1095,7 @@ class Terminal:
                 last_prune = time.time()
                 with self.lock:
                     cut = time.time() - self.a.max_age - 1800
-                    keep = self.watched()                    # watchlist coins stay until they are unstarred
+                    keep = self.watched() | self.held_mints()   # watchlist + held coins stay
                     self.coins = {m: c for m, c in self.coins.items() if c.ts >= cut or m in keep}
                     for k in list(self.creators):
                         self.creators[k] = [x for x in self.creators[k] if x[0] >= time.time() - HISTORY_S]
@@ -1406,6 +1444,29 @@ def serve(t, port):
                 return False
             return uid
 
+        def static(self, rel):
+            """Files of the built journal app (journal/dist)."""
+            base = os.path.realpath(JOURNAL_DIST)
+            f = os.path.realpath(os.path.join(base, rel))
+            if not f.startswith(base + os.sep) or not os.path.isfile(f):
+                return self.send(404, b"not found", "text/plain")
+            ext = os.path.splitext(f)[1]
+            ctype = {".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml",
+                     ".woff2": "font/woff2", ".woff": "font/woff", ".png": "image/png", ".json": "application/json"}.get(ext, "application/octet-stream")
+            body = open(f, "rb").read()
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            # hashed asset names never change; the page itself is always fetched fresh
+            self.send_header("Cache-Control", "public, max-age=31536000, immutable" if "/assets/" in f else "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("X-Frame-Options", "DENY")
+            self.end_headers()
+            try:
+                self.wfile.write(body)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+
         def body(self, limit=4000):
             n = int(self.headers.get("Content-Length") or 0)
             try:
@@ -1419,6 +1480,11 @@ def serve(t, port):
             q = urllib.parse.parse_qs(u.query)
             if u.path == "/":
                 return self.send(200, open(page, "rb").read(), "text/html; charset=utf-8")
+            if u.path == "/journal":
+                self.send_response(302); self.send_header("Location", "/journal/"); self.end_headers()
+                return
+            if u.path.startswith("/journal/"):
+                return self.static(u.path[len("/journal/"):] or "index.html")
             if not u.path.startswith("/api/"):
                 return self.send(404, b"not found", "text/plain")
             uid = self.auth()
@@ -1445,6 +1511,10 @@ def serve(t, port):
                 self.send(200, {"signals": rows[:500], "summary": t.signals.summary(rows), "sol_usd": t.usd})
             elif u.path == "/api/topwallets":
                 self.send(200, {"wallets": t.smart_list})
+            elif u.path == "/api/journal":
+                self.send(200, t.journal.payload(uid, t))
+            elif u.path == "/api/journal/circle":
+                self.send(200, {"circle": t.journal_circle(uid)})
             elif u.path == "/api/wallet":
                 t.wallets.touch(uid)
                 full = t.wallets.full(uid)
@@ -1482,7 +1552,7 @@ def serve(t, port):
             uid = self.auth()
             if uid is False:
                 return
-            b = self.body()
+            b = self.body(2_000_000 if p.startswith("/api/journal/") else 4000)
             if p == "/api/settings":
                 st = acc.save_settings(uid, b.get("settings"))
                 with t.lock:                             # new dip settings: restart this user's stages quietly
@@ -1522,6 +1592,25 @@ def serve(t, port):
                     return self.send(200, {"ok": True})
                 except (KeyError, TypeError, ValueError):
                     return self.send(400, {"ok": False})
+            if p.startswith("/api/journal/"):
+                act = p.rsplit("/", 1)[1]
+                tid = str(b.get("tid", ""))[:80]
+                data = b.get("data")
+                if act in ("note", "manual") and (not tid or (data is not None and not isinstance(data, dict))):
+                    return self.send(400, {"error": "bad request"})
+                if act == "note":
+                    t.journal.set_note(uid, tid, data)
+                elif act == "manual":
+                    t.journal.set_manual(uid, tid, data)
+                elif act == "hide":
+                    t.journal.set_hidden(uid, [str(x)[:80] for x in (b.get("tids") or [])][:5000], bool(b.get("on")))
+                elif act == "settings" and isinstance(b.get("settings"), dict):
+                    t.journal.set_settings(uid, b["settings"])
+                elif act == "circle":
+                    t.journal.set_circle(uid, data if isinstance(data, dict) else None)
+                else:
+                    return self.send(400, {"error": "bad request"})
+                return self.send(200, {"ok": True})
             if p == "/api/note":
                 try:
                     acc.set_note(uid, str(b["mint"])[:64], str(b.get("text", "")), str(b.get("tag", "")), bool(b.get("share")))
@@ -1586,8 +1675,9 @@ def main():
     t.signals = SG.Signals(os.path.join(R.DATA, "signals.db"))
     t.wallets = WL.Wallets(os.path.join(R.DATA, "wallets.db"), HELIUS_KEY_FILE, t.token_price)
     t.wallets.sol_usd = lambda: t.usd
+    t.journal = JN.Journal(os.path.join(R.DATA, "journal.db"))
     for target in (t.loop, t.meta_worker, t.price_worker, t.link_worker, t.wallets.worker, t.daily_worker, t.smart_worker,
-                   t.repair_worker):
+                   t.repair_worker, t.journal_worker):
         threading.Thread(target=target, daemon=True).start()
     log(f"SWEDEN terminal on http://0.0.0.0:{a.port}  ({len(acc.users())} account(s), "
         f"mail: {'Gmail' if acc.mailer.cfg else 'not set up - codes go to this log'}, "
