@@ -108,6 +108,7 @@ class Wallets:
         self.seen = {}                           # uid -> last time a page of this user asked for data
         self.meta = {}                           # mint -> (time, usd, name, sym, image) from DexScreener
         self.sol_usd = lambda: 0.0
+        self.brief_cache = {}
 
     # ---------- setup ----------
     def address(self, uid):
@@ -257,6 +258,41 @@ class Wallets:
                 self.db.execute("INSERT INTO snaps VALUES (?, ?, ?, ?, ?, ?)", (uid, time.time(), s["total_usd"],
                                 s["total_vis_usd"], s["cash_usd"], self.sol_usd()))
                 self.db.commit()
+
+    # ---------- per coin, for the cards and the coin page ----------
+    def brief(self, uid):
+        """{mint: {amount, entry_mcap_sol, trades: [(ts, kind, SOL)]}} for the tokens the wallet holds or traded
+        (cached 20 s; no network calls)."""
+        hit = self.brief_cache.get(uid)
+        if hit and time.time() - hit[0] < 20:
+            return hit[1]
+        lv = self.live.get(uid) or {}
+        out = {}
+        if "tokens" in lv:
+            usd = self.sol_usd()
+            with self.lock:
+                txs = self.db.execute("SELECT ts, sol, tokens, kind FROM wtx WHERE uid = ? ORDER BY ts", (uid,)).fetchall()
+            for ts, sol, tokens, kind in txs:
+                tok = json.loads(tokens)
+                kind = classify(sol, tok, kind == "failed")
+                cash = sol + (tok.get(USDC, 0.0) / usd if usd else 0.0)
+                for m, v in tok.items():
+                    if m == USDC:
+                        continue
+                    p = out.setdefault(m, {"bought": 0.0, "cost": 0.0, "trades": []})
+                    if kind == "buy":
+                        p["bought"] += v; p["cost"] += -cash
+                    if kind in ("buy", "sell"):
+                        p["trades"].append((ts, kind, abs(cash)))
+            for m, p in out.items():
+                p["amount"] = lv["tokens"].get(m, 0.0)
+                p["entry_mcap_sol"] = p["cost"] / p["bought"] * 1e9 if p["bought"] > 0 else None   # 1e9 tokens per coin
+                p["trades"] = p["trades"][-100:]
+            for m, a in lv["tokens"].items():
+                if m not in out and m != USDC:
+                    out[m] = {"amount": a, "entry_mcap_sol": None, "trades": []}
+        self.brief_cache[uid] = (time.time(), out)
+        return out
 
     # ---------- views ----------
     def hidden(self, uid):

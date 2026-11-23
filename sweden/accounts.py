@@ -20,13 +20,17 @@ EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,190}\.[A-Za-z]{2,}$")
 COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 TOPIC_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 RADAR_MODES = ("radar", "pulse", "grid", "off")
+SOUNDS = ("chime", "beep", "alarm", "off")
+CARD_VIEWS = ("cards", "list")
+NOTE_TAGS = ("", "meme", "rug", "watch", "skip")
 
 # per-user settings: name -> (type, min, max)  (strings / colours / choices are checked separately)
 NUMERIC = dict(max_age_h=(float, 0.5, 24), max_mcap_usd=(float, 1000, 1e9), bundle_max=(float, 0, 1),
                top10_max=(float, 0, 1), sniper_max=(float, 0, 1), dev_max=(float, 0, 1), prior_max=(int, 0, 100),
                show_dd=(float, 0, 0.9), dd_min=(float, 0.01, 0.95), dd_max=(float, 0.05, 0.99),
-               bounce=(float, 0.01, 5), pullback=(float, 0.01, 0.9))
-BOOLS = ("copy_check", "wash_check", "mayhem", "alert_new", "alert_entry", "alert_watch")
+               bounce=(float, 0.01, 5), pullback=(float, 0.01, 0.9),
+               quiet_from=(int, -1, 23), quiet_to=(int, -1, 23), tz_min=(int, -840, 840), daily_hour=(int, -1, 23))
+BOOLS = ("copy_check", "wash_check", "mayhem", "alert_new", "alert_entry", "alert_watch", "alert_danger", "alert_grad")
 COLORS = ("bg", "panel", "text", "accent")
 
 
@@ -63,6 +67,10 @@ def clean_settings(new, base):
             elif k in COLORS and isinstance(v, str) and COLOR_RE.match(v):
                 out[k] = v.lower()
             elif k == "radar_mode" and v in RADAR_MODES:
+                out[k] = v
+            elif k == "sound" and v in SOUNDS:
+                out[k] = v
+            elif k == "card_view" and v in CARD_VIEWS:
                 out[k] = v
             elif k == "ntfy_topic" and isinstance(v, str) and (v == "" or TOPIC_RE.match(v.strip())):
                 out[k] = v.strip()
@@ -111,6 +119,7 @@ class Accounts:
             CREATE TABLE IF NOT EXISTS codes (email TEXT, purpose TEXT, code TEXT, expires REAL, tries INT, sent REAL,
                 PRIMARY KEY (email, purpose));
             CREATE TABLE IF NOT EXISTS prefs (uid INT, mint TEXT, kind TEXT, PRIMARY KEY (uid, mint, kind));
+            CREATE TABLE IF NOT EXISTS notes (uid INT, mint TEXT, text TEXT, tag TEXT, ts REAL, PRIMARY KEY (uid, mint));
             CREATE TABLE IF NOT EXISTS pxalerts (id INTEGER PRIMARY KEY, uid INT, mint TEXT, sym TEXT, kind TEXT, op TEXT,
                 value REAL, created REAL);
         """)
@@ -141,6 +150,13 @@ class Accounts:
         for r in rows:
             px.setdefault(r[2], []).append(dict(zip(("id", "uid", "mint", "sym", "kind", "op", "value", "created"), r)))
         self.px = px                             # mint -> active price / mcap alerts (one-shot: deleted when fired)
+        with self.lock:
+            nrows = self.db.execute("SELECT uid, mint, text, tag, ts FROM notes").fetchall()
+        for uid, mint, text, tag, ts in nrows:
+            if uid in cache:
+                cache[uid].setdefault("notes", {})[mint] = {"text": text, "tag": tag, "ts": ts}
+        for u in cache.values():
+            u.setdefault("notes", {})
 
     def users(self):
         return self.cache
@@ -343,3 +359,23 @@ class Accounts:
             self.db.execute("DELETE FROM pxalerts WHERE id = ? AND uid = ?", (aid, uid))
             self.db.commit()
         self.reload()
+
+    # ---------- notes / tags per coin ----------
+    def set_note(self, uid, mint, text, tag):
+        text, tag = (text or "").strip()[:500], tag if tag in NOTE_TAGS else ""
+        with self.lock:
+            if text or tag:
+                self.db.execute("REPLACE INTO notes VALUES (?, ?, ?, ?, ?)", (uid, mint, text, tag, time.time()))
+            else:
+                self.db.execute("DELETE FROM notes WHERE uid = ? AND mint = ?", (uid, mint))
+            self.db.commit()
+        self.reload()
+
+    def quiet(self, uid, now=None):
+        """True inside the user's quiet hours (no new / entry pushes)."""
+        s = self.cache[uid]["settings"]
+        a, b = s.get("quiet_from", -1), s.get("quiet_to", -1)
+        if a < 0 or b < 0 or a == b:
+            return False
+        h = time.gmtime((now or time.time()) + s.get("tz_min", 0) * 60).tm_hour
+        return a <= h < b if a < b else (h >= a or h < b)

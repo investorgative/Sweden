@@ -258,6 +258,10 @@
   .kv { display: grid; grid-template-columns: 1fr auto; gap: 5px 12px; font-size: 12px; color: var(--muted); }
   .kv b { color: var(--text); font-weight: 600; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .chartbox[data-open] { cursor: zoom-in; }
+  .prs { display: grid; grid-template-columns: 34px 1fr auto; gap: 3px 10px; align-items: center; font-size: 12px; padding: 4px 0; }
+  .prs .pbar { height: 10px; border-radius: 5px; background: rgba(236,57,122,.55); overflow: hidden; }
+  .prs .pbar i { display: block; height: 100%; background: var(--green); }
+  .prs small { grid-column: 2 / -1; color: var(--faint); font-size: 11px; margin-top: -2px; }
   .chartbox .clabel.tr { pointer-events: none; }
   #flash.gold { background: radial-gradient(ellipse at center, rgba(245,194,73,.06) 30%, rgba(245,194,73,.42) 100%);
                 box-shadow: inset 0 0 120px 30px rgba(245,194,73,.55); }
@@ -291,6 +295,36 @@
   .wnote { color: var(--faint); font-size: 12px; }
   @media (max-width: 900px) { .wp-kpis { grid-template-columns: repeat(2, 1fr); } #wchart { height: 240px; } }
   @media (max-width: 480px) { .wchip small { display: none; } }
+
+  /* signals page */
+  #sigpage { position: fixed; inset: 0; z-index: 6; background: var(--bg); overflow-y: auto; display: none; }
+  #sigpage.show { display: block; }
+  .sgsum { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .lvrow { display: grid; grid-template-columns: 52px 1fr 44px; gap: 4px 10px; align-items: center; font-size: 12px; padding: 4px 0; }
+  .lvrow small { grid-column: 2 / -1; color: var(--faint); font-size: 11px; margin-top: -2px; }
+  .lvbar { height: 8px; border-radius: 4px; background: rgba(236,57,122,.45); overflow: hidden; }
+  .lvbar i.g { display: block; height: 100%; background: var(--green); }
+  @media (max-width: 900px) { .sgsum { grid-template-columns: 1fr; } }
+
+  /* keyboard help */
+  #keyhelp { position: fixed; inset: 0; z-index: 9; background: rgba(0,0,0,.55); display: none; align-items: center; justify-content: center; padding: 16px; }
+  #keyhelp.show { display: flex; }
+  #keyhelp .kbox { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; width: min(460px, 100%); max-height: 90vh; overflow-y: auto; padding-bottom: 12px; }
+  #keyhelp .dhead { display: flex; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line); } #keyhelp .dhead b { flex: 1; }
+  #keyhelp h4 { margin: 12px 16px 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); }
+  #keyhelp .krow { display: flex; gap: 12px; align-items: center; padding: 4px 16px; font-size: 13px; }
+  #keyhelp kbd { min-width: 64px; text-align: center; background: var(--panel3); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 6px;
+                 padding: 2px 6px; font: 600 12px ui-monospace, monospace; color: var(--text); }
+  .keyhint { position: fixed; right: 14px; bottom: 14px; z-index: 4; background: var(--panel2); border: 1px solid var(--line); border-radius: 999px;
+             padding: 6px 11px; font-size: 12px; color: var(--muted); }
+  @media (hover: none) { .keyhint { display: none; } }
+
+  #recentpop { position: fixed; inset: 0; z-index: 8; display: none; }
+  #recentpop.show { display: block; }
+  #recentpop .rbox { position: absolute; top: 56px; right: 16px; width: min(320px, calc(100% - 32px)); background: var(--panel); border: 1px solid var(--line);
+                     border-radius: 12px; padding: 10px 12px; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
+  #recentpop .rrow { display: flex; justify-content: space-between; gap: 10px; padding: 7px 4px; border-bottom: 1px solid var(--line); cursor: pointer; font-size: 13px; }
+  #recentpop .rrow:hover { background: var(--panel2); } #recentpop .rrow small { color: var(--muted); }
 
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation: none !important; transition: none !important; }
@@ -329,8 +363,28 @@
            color: #07080c; }
   .b-dip { background: var(--dip); } .b-zone { background: var(--zone); } .b-bounce { background: var(--bounce); }
   .b-entry { background: var(--entry); } .b-top, .b-dead { background: var(--panel3); color: var(--muted); }
-  .b-mayhem { background: var(--purple); } .b-watch { background: rgba(245,194,73,.15); color: var(--yellow); }
+  .b-mayhem { background: var(--purple); }
+  .b-mine { background: color-mix(in srgb, var(--blue) 22%, transparent); color: var(--text); text-transform: none; letter-spacing: 0; } .b-watch { background: rgba(245,194,73,.15); color: var(--yellow); }
   .why { color: var(--orange); font-size: 12px; }
+  .note { font-size: 12px; color: var(--muted); background: var(--panel2); border-radius: 8px; padding: 6px 9px; display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline; }
+  .note .ntag { color: var(--text); font-weight: 700; white-space: nowrap; }
+  .ntags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+  .ntags button { font-size: 12px; padding: 5px 9px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel2); color: var(--muted); }
+  .ntags button.on { border-color: var(--blue); color: var(--text); background: color-mix(in srgb, var(--blue) 18%, var(--panel2)); }
+  #cpnote { width: 100%; min-height: 70px; resize: vertical; background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 8px;
+            padding: 8px; font: inherit; font-size: 13px; }
+  /* compact list view */
+  .lrow { display: grid; grid-template-columns: 34px minmax(90px, 1.4fr) 92px 80px 70px 60px minmax(80px, 1fr) auto; gap: 10px; align-items: center;
+          background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 7px 10px; grid-column: 1 / -1; min-width: 0; }
+  .lrow.stage-entry { border-color: rgba(47,227,172,.55); } .lrow.watched { border-color: rgba(245,194,73,.45); } .lrow.filtered { opacity: .6; }
+  .lrow .img { width: 34px; height: 34px; border-radius: 8px; }
+  .lrow .nm { min-width: 0; } .lrow .nm b { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lrow .nm small { color: var(--muted); font-size: 11px; }
+  .lrow svg { width: 100%; height: 30px; display: block; cursor: zoom-in; }
+  .lrow .acts2 { display: flex; gap: 6px; align-items: center; }
+  .lrow .acts2 .copy { padding: 8px 12px; font-size: 13px; width: auto; }
+  .grid.listv { grid-template-columns: 1fr; gap: 6px; }
+  @media (max-width: 720px) { .lrow { grid-template-columns: 30px minmax(70px, 1fr) 70px auto; } .lrow .hide-sm { display: none; } }
 
   .copy { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; background: var(--blue); color: #fff;
           border: 0; border-radius: 10px; padding: 13px; font-weight: 800; font-size: 16px; }
@@ -420,6 +474,8 @@
     <div class="status"><span id="dot" class="dot"></span><span id="status">connecting…</span></div>
     <div class="spacer"></div>
     <div id="wchips" style="display:flex;gap:6px"></div>
+    <button class="iconbtn" id="openrecent" title="Recently viewed coins"></button>
+    <button class="iconbtn" id="opensignals" title="Signals: how did the recommendations do?"></button>
     <button class="iconbtn" id="pasteca" title="Jump to the coin whose CA is in your clipboard (or press Ctrl+V anywhere)"></button>
     <button class="iconbtn" id="testpush" title="Send a test push to your phone (ntfy)"></button>
     <button class="iconbtn" id="sound" title="Sound and notifications"></button>
@@ -429,9 +485,11 @@
   <div class="tabs" id="tabs"></div>
 </header>
 <div id="toast"></div>
+<button class="keyhint" onclick="showKeys()" title="Keyboard shortcuts">⌨ ?</button>
 <div id="flash"></div>
 <div id="coinpage" aria-label="Coin details"></div>
 <div id="walletpage" aria-label="Portfolio"></div>
+<div id="sigpage" aria-label="Signals"></div>
 <div id="ax"><form id="axform" autocomplete="off">
   <b id="axtitle"></b>
   <div class="axgrid">
@@ -496,6 +554,7 @@ const P = {
   belloff: '<path d="M3 3l18 18M8.7 3.7A6 6 0 0 1 18 8c0 3 .5 5 1.2 6.4M17 17H3s3-2 3-9c0-.5 0-1 .2-1.5M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',
   lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
+  signal: '<path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/>',
   paste: '<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
   gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
@@ -503,6 +562,9 @@ const P = {
 };
 const ic = (n) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${P[n]}</svg>`;
 
+const AICON = { entry: "🟢", px: "💰", danger: "⚠️", grad: "🎓", test: "🧪", new: "🔔" };
+const NOTE_TAGS = { meme: "👍 good meme", rug: "🚩 rug", watch: "👀 watch", skip: "⏭ skip" };
+const noteHtml = (n) => !n ? "" : `<div class="note">${n.tag ? `<span class="ntag">${NOTE_TAGS[n.tag]}</span>` : ""}${n.text ? `<span>${esc(n.text.slice(0, 140))}</span>` : ""}</div>`;
 const ORDER = { entry: 0, bounce: 1, zone: 2, dip: 3, top: 4, dead: 5 };
 const LABEL = { entry: "Entry", bounce: "Bounce", zone: "In zone", dip: "Dip", top: "Near top", dead: "Dead" };
 const TABS = [["all", "Recommended"], ["watch", "★ Watchlist"], ["entry", "Entry"], ["bounce", "Bounce"], ["zone", "Zone"],
@@ -600,6 +662,27 @@ function metric(icon, label, val, max, fmt = pct) {
   return `<div class="m ${cls}" title="${esc(label)}${max != null ? " (limit " + fmt(max) + ")" : ""}"><div class="v num">${ic(icon)}${val == null ? "–" : fmt(val)}</div><div class="l">${label}</div></div>`;
 }
 
+function spark(c) {
+  const p = c.pts; if (!p || p.length < 2) return "";
+  const ys = p.map((q) => Math.log(Math.max(q[1], 1e-9))), y0 = Math.min(...ys), y1 = Math.max(...ys), x1 = p[p.length - 1][0] || 1;
+  const d = p.map((q, i) => (i ? "L" : "M") + (q[0] / x1 * 100).toFixed(1) + " " + (28 - (ys[i] - y0) / ((y1 - y0) || 1) * 26).toFixed(1)).join(" ");
+  const col = getComputedStyle(document.documentElement).getPropertyValue("--" + c.stage).trim() || "#7d8396";
+  return `<svg viewBox="0 0 100 30" preserveAspectRatio="none" data-open="${esc(c.mint)}"><path d="${d}" fill="none" stroke="${col}" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg>`;
+}
+function lrow(c) {
+  const m = c.meta || {}, img = safeUrl(m.image);
+  const fresh = cardsReady && !cardsSeen.has(c.mint); cardsSeen.add(c.mint);
+  return `<div class="lrow stage-${c.stage}${c.watched ? " watched" : ""}${c.visible ? "" : " filtered"}${fresh ? " enter" : ""}${c.mint === focusMint ? " focus" : ""}" data-mint="${esc(c.mint)}">
+    ${img ? `<img class="img" src="${esc(img)}" loading="lazy" referrerpolicy="no-referrer" alt="" data-open="${esc(c.mint)}">` : `<div class="img" data-open="${esc(c.mint)}"></div>`}
+    <div class="nm" data-open="${esc(c.mint)}" style="cursor:pointer"><b>${esc(c.name)}</b><small>$${esc(c.sym)} · ${dur(c.age_min)}${c.note && c.note.tag ? " · " + NOTE_TAGS[c.note.tag] : ""}${c.mine && c.mine.amount > 0 ? " · ◎ held" : ""}</small></div>
+    <span><span class="badge b-${c.stage}">${LABEL[c.stage]}</span></span>
+    <span class="num"><b>${usd(c.mcap_usd)}</b></span><span class="num red">−${pct(c.dd, 0)}</span>
+    <span class="num hide-sm ${c.last_trade_s > 600 ? "red" : ""}">${secs(c.last_trade_s)}</span>
+    <span class="hide-sm">${spark(c)}</span>
+    <span class="acts2"><button class="copy" data-copy="${esc(c.mint)}" data-big="1"><span>Copy CA</span></button>
+      <button class="iconbtn star${c.watched ? " on" : ""}" data-pref="${c.watched ? "unwatch" : "watch"}" title="Watchlist">${ic("star")}</button></span></div>`;
+}
+
 function card(c) {
   const m = c.meta || {}, img = safeUrl(m.image), ch = c.checks || {}, l = c.live || {}, s = state.settings;
   const axiom = "https://axiom.trade/meme/" + (c.pool || c.mint) + "?chain=sol";
@@ -611,6 +694,7 @@ function card(c) {
   if (m.website && safeUrl(m.website)) links.push(["Website", safeUrl(m.website)]);
   const badges = `<span class="badge b-${c.stage}">${LABEL[c.stage]}</span>` + (c.watched ? '<span class="badge b-watch">★ Watchlist</span>' : "") +
     (c.mayhem ? '<span class="badge b-mayhem">Mayhem</span>' : "") +
+    (c.mine && c.mine.amount > 0 ? `<span class="badge b-mine">◎ You hold ${money(c.mine.value_usd)}${c.mine.pnl != null ? ` · <span class="${c.mine.pnl >= 0 ? "green" : "red"}">${c.mine.pnl >= 0 ? "+" : "−"}${Math.abs(c.mine.pnl * 100).toFixed(0)}%</span>` : ""}</span>` : "") +
     (!c.visible ? `<span class="why">${esc(c.hidden)}</span>` : "");
   const lastCls = c.last_trade_s == null ? "" : c.last_trade_s > 600 ? "red" : c.last_trade_s < 60 ? "green" : "";
   const open = openDetails.has(c.mint) ? " open" : "";
@@ -627,7 +711,7 @@ function card(c) {
       <button class="iconbtn" data-pref="${c.user_hidden ? "unhide" : "hide"}" title="${c.user_hidden ? "Show again" : "Hide from recommendations and alerts"}">${ic(c.user_hidden ? "show" : "hide")}</button>
     </div>
   </div>
-  <div class="badges">${badges}</div>
+  <div class="badges">${badges}</div>${noteHtml(c.note)}
   <button class="copy" data-copy="${esc(c.mint)}" data-big="1"><span>Copy CA</span><code>${esc(short(c.mint))}</code></button>
   <div class="kpis num">
     <div class="kpi"><div class="k">Mcap</div><div class="v">${usd(c.mcap_usd)}</div></div>
@@ -780,16 +864,39 @@ function parseNum(s) {                                       // "50k", "1.2m", "
 function openCoin(mint) { location.hash = "#coin/" + mint; }
 function route() {
   const m = location.hash.match(/^#coin\/([1-9A-HJ-NP-Za-km-z]{32,44})$/), ok = token && userToken;
-  if (m && ok) { hideWallet(); showCoin(m[1]); }
-  else { hideCoin(); location.hash === "#wallet" && ok ? showWallet() : hideWallet(); }
+  if (m && ok) { hideWallet(); hideSignals(); showCoin(m[1]); }
+  else {
+    hideCoin();
+    location.hash === "#wallet" && ok ? showWallet() : hideWallet();
+    location.hash === "#signals" && ok ? showSignals() : hideSignals();
+  }
 }
 window.addEventListener("hashchange", route);
-document.addEventListener("keydown", (e) => { if (e.key === "Escape" && cp.mint) history.back(); });
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape" || $("#keyhelp")?.classList.contains("show") || $("#settings").classList.contains("show")) return;
+  if (cp.mint || wp.open || sg.open) history.back();
+});
 
+function rememberCoin(mint, name, sym) {                     // recently viewed (this browser only)
+  let r = []; try { r = JSON.parse(localStorage.getItem("swedenRecent") || "[]"); } catch (e) {}
+  r = [{ mint, name, sym, ts: Date.now() }].concat(r.filter((x) => x.mint !== mint)).slice(0, 15);
+  try { localStorage.setItem("swedenRecent", JSON.stringify(r)); } catch (e) {}
+}
+function showRecent() {
+  let el = $("#recentpop");
+  if (el && el.classList.contains("show")) return el.classList.remove("show");
+  let r = []; try { r = JSON.parse(localStorage.getItem("swedenRecent") || "[]"); } catch (e) {}
+  if (!el) { el = document.createElement("div"); el.id = "recentpop"; document.body.appendChild(el);
+    el.addEventListener("click", (e) => { if (e.target.closest("[data-open]") || e.target === el) el.classList.remove("show"); }); }
+  const now = Date.now();
+  el.innerHTML = `<div class="rbox"><b>Recently viewed</b>${r.length ? r.map((x) => `<div class="rrow" data-open="${esc(x.mint)}"><span>$${esc(x.sym || short(x.mint))} <small>${esc((x.name || "").slice(0, 26))}</small></span><small>${dur((now - x.ts) / 60000)} ago</small></div>`).join("")
+    : '<div class="wnote" style="padding:8px 0">No coin opened yet.</div>'}</div>`;
+  el.classList.add("show");
+}
 function showCoin(mint) {
   if (cp.mint === mint) return;
   hideCoin(true);
-  Object.assign(cp, { mint, full: true, lastT: null, data: null, lineKey: "", lines: [] });
+  Object.assign(cp, { mint, full: true, lastT: null, data: null, lineKey: "", lines: [], remembered: false });
   const el = $("#coinpage");
   el.dataset.mint = mint;
   el.innerHTML = `<div class="cp-top" data-mint="${esc(mint)}">
@@ -803,7 +910,8 @@ function showCoin(mint) {
       <div class="cp-tools"><div class="seg" id="cptf">${TFS.map(([t, l]) => `<button data-tf="${t}" class="${t === cp.tf ? "on" : ""}">${l}</button>`).join("")}</div>
         <div class="seg" id="cpmode"><button data-cmode="mcap" class="${cp.mode === "mcap" ? "on" : ""}">MCap</button><button data-cmode="price" class="${cp.mode === "price" ? "on" : ""}">Price</button></div></div>
       <div id="cpchart"><div class="msg">Loading chart…</div></div>
-      <div class="cp-box"><div class="cp-tabs"><button class="tab" data-cptab="trades">Trades</button><button class="tab" data-cptab="holders">Top holders</button></div>
+      <div class="cp-box"><div class="cp-tabs"><button class="tab" data-cptab="trades">Trades</button><button class="tab" data-cptab="traders">Top traders</button>
+        <button class="tab" data-cptab="holders">Top holders</button><button class="tab" data-cptab="dev">Dev history <span class="n" id="cpdevn"></span></button></div>
         <div class="tlwrap" id="cplist"></div></div>
     </div><aside class="cp-side">
       <div class="cp-box"><h4>${ic("bell")} Price / mcap alert</h4>
@@ -811,6 +919,15 @@ function showCoin(mint) {
         <div class="axrow2"><input id="cpaval" inputmode="decimal" placeholder="e.g. 50k" autocomplete="off"><button id="cpaadd">Add</button></div>
         <div class="quick">${[-50, -25, 25, 50, 100].map((p) => `<button data-q="${p}">${p > 0 ? "+" : ""}${p}%</button>`).join("")}</div>
         <div class="alist" id="cpalerts"></div></div>
+      <div class="cp-box"><h4>Trade calculator</h4>
+        <div class="axrow2"><input id="cpcalc" inputmode="decimal" value="0.5" autocomplete="off"><span style="align-self:center;color:var(--muted)">SOL</span></div>
+        <div class="quick">${[0.1, 0.25, 0.5, 1, 2].map((v) => `<button data-calc="${v}">${v}</button>`).join("")}</div>
+        <div class="kv num" id="cpcalcout"></div></div>
+      <div class="cp-box"><h4>Your note</h4><div class="ntags" id="cpntags"></div>
+        <textarea id="cpnote" maxlength="500" placeholder="Only you see this - meme, narrative, why you skipped it…"></textarea>
+        <div style="display:flex;justify-content:flex-end;margin-top:6px"><button class="iconbtn" id="cpnotesave">Save note</button></div></div>
+      <div class="cp-box" id="cpminebox" hidden><h4>Your position</h4><div class="kv num" id="cpmine"></div></div>
+      <div class="cp-box"><h4>Buy / sell pressure</h4><div id="cppress"></div></div>
       <div class="cp-box"><h4>Token info</h4><div class="metrics" id="cpmetrics"></div><div class="kv num" id="cpkv" style="margin-top:12px"></div></div>
       <div class="cp-box"><div class="links" id="cplinks"></div></div>
     </aside></div>`;
@@ -826,6 +943,10 @@ function showCoin(mint) {
     $("#cpaval").value = cp.akind === "mcap" ? Math.round(v) : v.toPrecision(3);
   });
   $("#cpaadd").onclick = addAlert;
+  cp.noteTag = null;
+  $("#cpnotesave").onclick = saveNote;
+  $("#cpcalc").addEventListener("input", renderCalc);
+  el.querySelectorAll("[data-calc]").forEach((b) => b.onclick = () => { $("#cpcalc").value = b.dataset.calc; renderCalc(); });
   $("#cpaval").addEventListener("keydown", (e) => { if (e.key === "Enter") addAlert(); });
   loadLW().then(rebuildChart, () => { $("#cpchart").innerHTML = '<div class="msg">The chart library could not be loaded (no internet?)</div>'; });
   cpRefresh(); cp.timer = setInterval(cpRefresh, 3000);
@@ -864,19 +985,33 @@ function drawCandles(d) {
   const vols = d.candles.map((c) => ({ time: c[0] + TZO, value: c[5] * (cp.data?.sol_usd || state?.sol_usd || 0), color: c[4] >= c[1] ? green : red }));
   if (!bars.length) return;
   if (cp.full || cp.lastT === null) {
-    cp.cs.setData(bars); cp.vs.setData(vols); cp.full = false;
-    if (d.grad_ts) {
-      const gt = Math.floor(d.grad_ts / d.tf) * d.tf + TZO, b = bars.find((x) => x.time >= gt);
-      if (b) cp.cs.setMarkers([{ time: b.time, position: "aboveBar", color: getComputedStyle(document.documentElement).getPropertyValue("--blue").trim(), shape: "arrowDown", text: "graduated" }]);
-    }
+    cp.cs.setData(bars); cp.vs.setData(vols); cp.full = false; cp.markKey = "";
   } else {
     for (let i = 0; i < bars.length; i++) if (bars[i].time >= cp.lastT) { cp.cs.update(bars[i]); cp.vs.update(vols[i]); }
   }
   cp.lastT = bars[bars.length - 1].time;
+  drawMarkers(bars, d);
+}
+function drawMarkers(bars, d) {                              // graduation + your own buys / sells
+  const trades = (cp.data && cp.data.mine && cp.data.mine.trades) || [];
+  const key = bars.length + "|" + bars[0].time + "|" + trades.length + "|" + d.tf;
+  if (key === cp.markKey) return;
+  cp.markKey = key;
+  const at = (ts) => { const t = Math.floor(ts / d.tf) * d.tf + TZO, b = bars.find((x) => x.time >= t); return b ? b.time : null; };
+  const css = getComputedStyle(document.documentElement), m = [];
+  if (d.grad_ts) { const t = at(d.grad_ts); if (t) m.push({ time: t, position: "aboveBar", color: css.getPropertyValue("--blue").trim(), shape: "arrowDown", text: "graduated" }); }
+  for (const [ts, kind, solAmt] of trades) {
+    const t = at(ts); if (!t) continue;
+    m.push(kind === "buy" ? { time: t, position: "belowBar", color: css.getPropertyValue("--green").trim(), shape: "arrowUp", text: "B " + solAmt.toFixed(2) }
+                          : { time: t, position: "aboveBar", color: css.getPropertyValue("--red").trim(), shape: "arrowDown", text: "S " + solAmt.toFixed(2) });
+  }
+  m.sort((a, b) => a.time - b.time);
+  cp.cs.setMarkers(m);
 }
 function drawAlertLines(alerts) {
   if (!cp.cs) return;
-  const key = cp.mode + "|" + alerts.map((a) => a.id).join(",");
+  const entry = cp.data && cp.data.mine && cp.data.mine.amount > 0 ? cp.data.mine.entry_mcap_usd : null;
+  const key = cp.mode + "|" + alerts.map((a) => a.id).join(",") + "|" + (entry ? entry.toFixed(0) : "");
   if (key === cp.lineKey) return;
   cp.lines.forEach((l) => cp.cs.removePriceLine(l)); cp.lines = [];
   for (const a of alerts) {
@@ -884,6 +1019,8 @@ function drawAlertLines(alerts) {
     cp.lines.push(cp.cs.createPriceLine({ price: p, color: "#f5c249", lineWidth: 1, lineStyle: 2, axisLabelVisible: true,
                                           title: (a.op === ">=" ? "▲" : "▼") + " alert" }));
   }
+  if (entry) cp.lines.push(cp.cs.createPriceLine({ price: cp.mode === "mcap" ? entry : entry / 1e9, color: "#a78bfa", lineWidth: 1, lineStyle: 0,
+                                                   axisLabelVisible: true, title: "your entry" }));
   cp.lineKey = key;
 }
 
@@ -918,6 +1055,7 @@ function renderCoin() {
   const d = cp.data, i = d.info, m = i.meta || {}, img = safeUrl(m.image), s = state?.settings || {}, l = i.live || {}, ch = i.checks || {};
   $("#cpimg").outerHTML = img ? `<img class="img" id="cpimg" data-copy="${esc(i.mint)}" src="${esc(img)}" referrerpolicy="no-referrer" alt="">` : `<div class="img" id="cpimg"></div>`;
   $("#cpname").textContent = i.name;
+  if (!cp.remembered) { cp.remembered = true; rememberCoin(i.mint, i.name, i.sym); }
   const stage = i.visible ? `<b style="color:var(--${i.stage})">${LABEL[i.stage] || i.stage}</b>` : `<span>${esc(i.hidden)}</span>`;
   $("#cpsub").innerHTML = `<span>$${esc(i.sym)}</span><span>age <b>${dur(i.age_min)}</b></span>${i.graduated ? `<span>graduated <b>${dur(i.grad_min)}</b> ago</span>` : "<span>on the bonding curve</span>"}${stage}`;
   $("#cpacts").innerHTML = `<button class="iconbtn star${i.watched ? " on" : ""}" data-pref="${i.watched ? "unwatch" : "watch"}" title="Watchlist">${ic("star")}</button>`;
@@ -941,10 +1079,41 @@ function renderCoin() {
   if (m.telegram && safeUrl(m.telegram)) links.push(["Telegram", safeUrl(m.telegram)]);
   if (m.website && safeUrl(m.website)) links.push(["Website", safeUrl(m.website)]);
   $("#cplinks").innerHTML = links.map(([t, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${t}</a>`).join("");
+  $("#cppress").innerHTML = ["1m", "5m", "15m"].map((k) => { const p = (d.pressure || {})[k] || {}, tot = (p.buy || 0) + (p.sell || 0);
+    return `<div class="prs num"><span>${k}</span><span class="pbar"><i style="width:${tot ? p.buy / tot * 100 : 50}%"></i></span>
+      <b class="${(p.net || 0) >= 0 ? "green" : "red"}">${(p.net || 0) >= 0 ? "+" : "−"}◎${Math.abs(p.net || 0).toFixed(2)}</b>
+      <small>◎${(p.buy || 0).toFixed(2)} bought by ${p.buyers || 0} · ◎${(p.sell || 0).toFixed(2)} sold by ${p.sellers || 0}</small></div>`; }).join("");
+  const dv = d.dev || []; $("#cpdevn").textContent = dv.length ? `(${dv.length})` : "";
+  if (cp.noteTag === null) {                                  // fill the note once per visit (do not overwrite typing)
+    const n = i.note || {}; cp.noteTag = n.tag || ""; $("#cpnote").value = n.text || "";
+  }
+  $("#cpntags").innerHTML = Object.entries(NOTE_TAGS).map(([k, v]) => `<button data-ntag="${k}" class="${cp.noteTag === k ? "on" : ""}">${v}</button>`).join("");
+  $("#cpntags").querySelectorAll("[data-ntag]").forEach((b) => b.onclick = () => { cp.noteTag = cp.noteTag === b.dataset.ntag ? "" : b.dataset.ntag; saveNote(); });
+  const mn = d.mine;
+  $("#cpminebox").hidden = !mn;
+  if (mn) $("#cpmine").innerHTML = [["Holding", mn.amount > 0 ? `${(+mn.amount).toLocaleString(undefined, { maximumFractionDigits: 0 })} · ${money(mn.value_usd)}` : "sold out"],
+    ["Average entry mcap", mn.entry_mcap_usd ? usd(mn.entry_mcap_usd) : "–"],
+    ["Since entry", mn.pnl != null ? pctTxt(mn.pnl) : "–"], ["Your trades", `${mn.trades.filter((t) => t[1] === "buy").length} buys · ${mn.trades.filter((t) => t[1] === "sell").length} sells`]]
+    .map(([k, v]) => `<span>${k}</span><b>${v}</b>`).join("");
   $("#cpalerts").innerHTML = (d.alerts || []).length ? d.alerts.map((a) => `<div><span>${a.kind === "mcap" ? "MCap" : "Price"} ${a.op === ">=" ? "≥" : "≤"} <b>${a.kind === "mcap" ? usd(a.value) : "$" + (+a.value).toPrecision(3)}</b></span><button data-adel="${a.id}" aria-label="Delete alert">✕</button></div>`).join("")
     : '<span style="color:var(--faint);font-size:12px">No alert on this coin. It fires once, with a push and a gold flash.</span>';
   $("#cpalerts").querySelectorAll("[data-adel]").forEach((b) => b.onclick = () => delAlert(+b.dataset.adel));
-  renderList();
+  renderList(); renderCalc();
+}
+function renderCalc() {                                      // buy now and sell right back: impact, fees, break-even
+  const i = cp.data?.info, out = $("#cpcalcout"); if (!i || !out) return;
+  const solIn = parseNum($("#cpcalc").value);
+  if (!i.res || !(solIn > 0)) { out.innerHTML = '<span>Enter an amount</span><b></b>'; return; }
+  const usdP = cp.data.sol_usd, fee = i.fee || 0.0125, txc = 0.0015;               // per transaction (priority fee / tip)
+  const [Q, B] = i.res; const s = solIn * 1e9, sin = s * (1 - fee);
+  const tok = B - B * Q / (Q + sin), Q2 = Q + sin, B2 = B - tok;
+  const back = Q2 * tok / (B2 + tok) * (1 - fee);                                   // selling right away
+  const avgMc = s / tok * 1e15 / 1e9 * usdP;                                        // average fill as mcap (1e15 raw = supply)
+  const rt = (back / 1e9 - 2 * txc) / solIn - 1;
+  out.innerHTML = [["You get", `${(tok / 1e6).toLocaleString(undefined, { maximumFractionDigits: 0 })} tokens · ${pct(tok / 1e15, 2)} of supply`],
+    ["Average fill (mcap)", `${usd(avgMc)} <small class="muted">now ${usd(i.mcap_usd)}</small>`],
+    ["Price impact", pctTxt(avgMc / i.mcap_usd - 1, 1)], ["Sell right back", `${pctTxt(rt, 1)} <small class="muted">fees ${(fee * 100).toFixed(2)}% ×2 + network fees (the slippage cancels out)</small>`],
+    ["Break-even mcap", `≈ ${usd(i.mcap_usd / (1 + rt))}`]].map(([k, v]) => `<span>${k}</span><b>${v}</b>`).join("");
 }
 const tagHtml = (t) => (t || []).map((x) => `<span class="tag ${x}">${x === "bundler" ? "bundle" : x}</span>`).join("");
 const wLink = (w) => `<a href="https://solscan.io/account/${esc(w)}" target="_blank" rel="noopener noreferrer">${esc(short(w))}</a>`;
@@ -952,6 +1121,25 @@ function renderList() {
   const d = cp.data; if (!d) return;
   document.querySelectorAll("[data-cptab]").forEach((b) => b.classList.toggle("on", b.dataset.cptab === cp.tab));
   const now = Date.now() / 1000;
+  if (cp.tab === "traders") {
+    const t = d.traders || [];
+    $("#cplist").innerHTML = t.length ? `<table class="tlist num"><tr><th>Wallet</th><th class="r">Bought</th><th class="r">Sold</th><th class="r">Still holds</th><th class="r">PnL</th><th class="r">Trades</th></tr>` +
+      t.map((r) => `<tr><td>${wLink(r.wallet)}${tagHtml(r.tags)}</td><td class="r">◎${r.bought.toFixed(2)}</td><td class="r">◎${r.sold.toFixed(2)}</td>
+        <td class="r">${r.left_share > 0.00001 ? `◎${r.left_sol.toFixed(2)} <small class="muted">${pct(r.left_share, 2)}</small>` : '<small class="muted">sold out</small>'}</td>
+        <td class="r"><b class="${r.pnl >= 0 ? "green" : "red"}">${r.pnl >= 0 ? "+" : "−"}◎${Math.abs(r.pnl).toFixed(2)}</b></td><td class="r">${r.buys}/${r.sells}</td></tr>`).join("") +
+      `</table><div style="color:var(--faint);font-size:11px;padding-top:6px">Best 15 and worst 5 wallets by profit in this coin, from the recorded trades (what is still held is valued at what selling it now would return from the pool, before fees).</div>`
+      : '<div class="empty">No trades recorded.</div>';
+    return;
+  }
+  if (cp.tab === "dev") {
+    const dv = d.dev || [], i = d.info, grad = dv.filter((x) => x.graduated).length;
+    $("#cplist").innerHTML = `<div class="wnote" style="padding:6px 0 10px">Dev wallet ${wLink(i.creator)} launched <b>${dv.length}</b> other coin${dv.length === 1 ? "" : "s"} in the last 72 h that we recorded${dv.length ? `, <b>${grad}</b> of them graduated` : ""}.</div>` +
+      (dv.length ? `<table class="tlist num"><tr><th>Coin</th><th class="r">Launched</th><th class="r">Graduated</th><th class="r">ATH mcap</th></tr>` +
+        dv.map((x) => `<tr><td data-open="${esc(x.mint)}" style="cursor:pointer"><b>$${esc(x.sym)}</b> <small class="muted">${esc((x.name || "").slice(0, 24))}</small></td>
+          <td class="r">${dur(x.age_min)} ago</td><td class="r">${x.graduated ? '<span class="green">yes</span>' : '<span class="muted">no</span>'}</td>
+          <td class="r">${x.ath_usd ? usd(x.ath_usd) : '<small class="muted">not tracked</small>'}</td></tr>`).join("") + "</table>" : "");
+    return;
+  }
   $("#cplist").innerHTML = cp.tab === "trades"
     ? `<table class="tlist num"><tr><th>Age</th><th>Type</th><th class="r">MCap</th><th class="r">SOL</th><th class="r">USD</th><th>Wallet</th></tr>` +
       d.trades.map((t) => `<tr class="${t.buy ? "buy" : "sell"}"><td>${secs(now - t.ts)}</td><td class="side">${t.buy ? "Buy" : "Sell"}</td>
@@ -960,6 +1148,13 @@ function renderList() {
       d.holders.map((h, k) => `<tr><td>${k + 1}</td><td>${wLink(h.wallet)}${tagHtml(h.tags)}</td><td class="r">${pct(h.share, 2)}</td>
         <td><span class="hbar"><i style="width:${Math.min(100, h.share * 100 / Math.max(0.01, d.holders[0].share))}%"></i></span></td></tr>`).join("") +
       `</table><div style="color:var(--faint);font-size:11px;padding-top:6px">From the trades we recorded (transfers are not included, so this can differ from Axiom).</div>`;
+}
+async function saveNote() {
+  const i = cp.data?.info; if (!i) return;
+  try {
+    await fetch("/api/note", { method: "POST", headers: { "Content-Type": "application/json", ...AH() }, body: JSON.stringify({ mint: i.mint, text: $("#cpnote").value, tag: cp.noteTag || "" }) });
+    toast("Note saved"); cpRefresh(); tick();
+  } catch (e) { toast("Note not saved", false); }
 }
 async function addAlert() {
   const i = cp.data?.info; if (!i) return;
@@ -1128,6 +1323,116 @@ function renderWalletList() {
   });
 }
 
+// ---------- signals page (#signals): how did the recommendations and entry signals do? ----------
+const sg = { open: false, kind: "all", days: 7, watch: false, data: null, timer: null };
+const pctTxt = (x, d = 0) => x == null ? "–" : `<span class="${x >= 0 ? "green" : "red"}">${x >= 0 ? "+" : "−"}${Math.abs(x * 100).toFixed(d)}%</span>`;
+function showSignals() {
+  if (sg.open) return;
+  sg.open = true;
+  const el = $("#sigpage");
+  el.innerHTML = `<div class="cp-top"><button class="iconbtn" id="sgback" aria-label="Back">←</button>
+      <div class="title"><div class="name"><span>Signals</span></div><div class="sub">How your recommendations and entry signals did afterwards</div></div>
+      <button class="iconbtn" data-pastebtn="1" title="Open a coin from the clipboard">${ic("paste")}</button></div>
+    <div class="wp-body">
+      <div class="cp-tools"><div class="seg" id="sgkind"><button data-sgk="all" class="on">All</button><button data-sgk="new">Recommended</button><button data-sgk="entry">Entry</button></div>
+        <div class="seg" id="sgdays"><button data-sgd="1">24 h</button><button data-sgd="7" class="on">7 d</button><button data-sgd="30">30 d</button></div>
+        <label class="wnote"><input type="checkbox" id="sgwatch"> include watchlist-only signals</label></div>
+      <div class="sgsum" id="sgsum"></div>
+      <div class="cp-box"><div class="tlwrap" id="sglist"></div></div>
+      <div class="wnote">Raw market-cap moves after the moment of the signal - no fees, no slippage, no delay, so a real trade does worse.
+        "First ±35 %" says whether +35 % or −35 % came first. Followed for 24 h, or as long as the terminal tracks the coin
+        (~6.5 h after launch, longer on your watchlist). Signals are recorded whether or not the alert is switched on, from this update on.</div></div>`;
+  el.classList.add("show"); document.body.style.overflow = "hidden"; el.scrollTop = 0;
+  $("#sgback").onclick = () => history.back();
+  el.querySelectorAll("[data-sgk]").forEach((b) => b.onclick = () => { sg.kind = b.dataset.sgk; markSeg("#sgkind", b); renderSignals(); });
+  el.querySelectorAll("[data-sgd]").forEach((b) => b.onclick = () => { sg.days = +b.dataset.sgd; markSeg("#sgdays", b); sgRefresh(); });
+  $("#sgwatch").onchange = (e) => { sg.watch = e.target.checked; renderSignals(); };
+  sgRefresh(); sg.timer = setInterval(sgRefresh, 30000);
+}
+function hideSignals() {
+  if (!sg.open) return;
+  sg.open = false; clearInterval(sg.timer);
+  $("#sigpage").classList.remove("show"); $("#sigpage").innerHTML = ""; document.body.style.overflow = "";
+}
+async function sgRefresh() {
+  try {
+    const r = await fetch("/api/signals?days=" + sg.days, { headers: AH() });
+    if (r.status === 401) return on401(r);
+    sg.data = await r.json();
+  } catch (e) { return; }
+  renderSignals();
+}
+function renderSignals() {
+  const d = sg.data; if (!d || !sg.open) return;
+  const rows = d.signals.filter((r) => (sg.kind === "all" || r.kind === sg.kind) && (sg.watch || !r.watch_only));
+  const card = (title, s) => {
+    if (!s) return `<div class="cp-box"><h4>${title}</h4><div class="wnote">No signals yet in this period.</div></div>`;
+    const lv = Object.entries(s.levels).map(([k, v]) => { const dec = v.tp + v.sl;
+      return `<div class="lvrow"><span>±${k} %</span><span class="lvbar"><i class="g" style="width:${dec ? v.tp / dec * 100 : 0}%"></i></span>
+        <b>${dec ? Math.round(v.tp / dec * 100) + "%" : "–"}</b><small>${v.tp} up first · ${v.sl} down first${v.open ? ` · ${v.open} open` : ""}</small></div>`; }).join("");
+    return `<div class="cp-box"><h4>${title} <span class="muted" style="text-transform:none;letter-spacing:0">${s.n} signal${s.n === 1 ? "" : "s"}</span></h4>
+      <div class="kv num" style="margin-bottom:10px"><span>Median best move after</span><b>${pctTxt(s.med_max)}</b><span>Median worst move after</span><b>${pctTxt(s.med_min)}</b>
+        <span>Median now / at the end</span><b>${pctTxt(s.med_last)}</b></div>${lv}</div>`;
+  };
+  $("#sgsum").innerHTML = card("Recommended (new)", d.summary.new) + card("Entry signals", d.summary.entry);
+  const now = Date.now() / 1000;
+  $("#sglist").innerHTML = rows.length ? `<table class="tlist num"><tr><th>When</th><th>Coin</th><th>Type</th><th class="r">MCap then</th><th class="r">Best</th><th class="r">Worst</th><th class="r">Now / end</th><th class="r">First ±35 %</th></tr>` +
+    rows.map((r) => { const f = r.firsts["35"];
+      return `<tr><td>${secs(now - r.ts)} ago</td><td data-open="${esc(r.mint)}" style="cursor:pointer"><b>$${esc(r.sym)}</b>${r.watch_only ? ' <span class="tag top10">watch</span>' : ""}</td>
+        <td>${r.kind === "entry" ? "🟢 Entry" : "🔔 New"}</td><td class="r">${usd(r.mcap_sol * r.sol_usd)}</td>
+        <td class="r">${pctTxt(r.max_pct)} <small class="muted">${r.max_pct > 0.005 ? secs(r.max_ts - r.ts) : ""}</small></td><td class="r">${pctTxt(r.min_pct)}</td>
+        <td class="r">${pctTxt(r.last_pct)}${r.done ? "" : ' <small class="muted">live</small>'}</td>
+        <td class="r">${f ? (f[0] === "tp" ? `<span class="green">▲ up</span>` : `<span class="red">▼ down</span>`) + ` <small class="muted">${secs(f[1])}</small>` : '<small class="muted">open</small>'}</td></tr>`; }).join("") + "</table>"
+    : '<div class="empty">No signals in this period yet. They are recorded from now on, every time a coin becomes recommended or reaches the entry signal.</div>';
+}
+
+// ---------- keyboard shortcuts (PC) ----------
+const KEYS = [["Everywhere", [["?", "this overview"], ["S", "signals"], ["P", "portfolio"], [",", "settings"], ["/", "search (Filtered / Hidden / Watchlist)"],
+                              ["Ctrl+V", "open the coin whose CA you paste"], ["Esc", "back / close"]]],
+              ["Coin page", [["C", "copy CA"], ["A", "open on Axiom (also copies the CA)"], ["W", "add to / remove from watchlist"],
+                             ["1 – 7", "timeframe 1s … 1h"], ["M", "MCap / price"], ["T / R / H / D", "trades / top traders / holders / dev history"]]]];
+function showKeys() {
+  let el = $("#keyhelp");
+  if (!el) {
+    el = document.createElement("div"); el.id = "keyhelp";
+    el.innerHTML = `<div class="kbox"><div class="dhead"><b>Keyboard shortcuts</b><button class="iconbtn" data-kclose="1">✕</button></div>` +
+      KEYS.map(([t, ks]) => `<h4>${t}</h4>` + ks.map(([k, v]) => `<div class="krow"><kbd>${k}</kbd><span>${v}</span></div>`).join("")).join("") + `</div>`;
+    el.addEventListener("click", (e) => { if (e.target === el || e.target.closest("[data-kclose]")) el.classList.remove("show"); });
+    document.body.appendChild(el);
+  }
+  el.classList.toggle("show");
+}
+document.addEventListener("keydown", (e) => {
+  const t = e.target;
+  if (e.ctrlKey || e.metaKey || e.altKey || (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable))) return;
+  if (!token || !userToken || $("#settings").classList.contains("show") || $("#ax").classList.contains("show")) return;
+  const k = e.key;
+  if (k === "?") { e.preventDefault(); return showKeys(); }
+  if (k === "Escape" && $("#keyhelp")?.classList.contains("show")) return $("#keyhelp").classList.remove("show");
+  if (cp.mint && cp.data && cp.data.info && cp.data.info.found) {
+    const i = cp.data.info;
+    if (k === "c" || k === "C") return copyCA(i.mint, null);
+    if (k === "a" || k === "A") { copyCA(i.mint, null); return window.open("https://axiom.trade/meme/" + (i.pool || i.mint) + "?chain=sol", "_blank", "noopener"); }
+    if (k === "w" || k === "W") return setPref(i.mint, i.watched ? "unwatch" : "watch");
+    if (k >= "1" && k <= "7") return document.querySelector(`[data-tf="${TFS[+k - 1][0]}"]`)?.click();
+    if (k === "m" || k === "M") return document.querySelector(`[data-cmode="${cp.mode === "mcap" ? "price" : "mcap"}"]`)?.click();
+    const tabk = { t: "trades", r: "traders", h: "holders", d: "dev" }[k.toLowerCase()];
+    if (tabk) return document.querySelector(`[data-cptab="${tabk}"]`)?.click();
+  }
+  if (k === "s" || k === "S") { location.hash = "#signals"; return; }
+  if (k === "p" || k === "P") { location.hash = "#wallet"; return; }
+  if (k === ",") return openSettings();
+  if (k === "/" && $("#search").classList.contains("show") && !cp.mint) { e.preventDefault(); $("#q").focus(); }
+});
+// an Axiom link also copies the CA (handy when Axiom asks for it, or to paste it elsewhere)
+document.addEventListener("click", (e) => {
+  const a = e.target.closest("a.axiom");
+  if (!a) return;
+  const m = a.href.match(/axiom\.trade\/meme\/([1-9A-HJ-NP-Za-km-z]{32,44})/);
+  const mint = a.closest("[data-mint]")?.dataset.mint || (cp.mint && a.id === "cpax" ? cp.mint : null) || (m && m[1]);
+  if (mint && navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(mint).catch(() => {});
+}, true);
+
 // ---------- page ----------
 // ---------- jump to a pasted CA ----------
 const CA_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
@@ -1154,7 +1459,7 @@ const SEARCH_TABS = ["filtered", "hidden", "watch"];
 let query = "";
 function matches(c) {
   if (!query || !SEARCH_TABS.includes(tab)) return true;
-  return [c.name, c.sym, c.mint].some((v) => String(v || "").toLowerCase().includes(query));
+  return [c.name, c.sym, c.mint, c.note && c.note.text].some((v) => String(v || "").toLowerCase().includes(query));
 }
 function inTab(c) {
   if (!matches(c)) return false;
@@ -1179,6 +1484,7 @@ function render() {
   $("#rules").textContent = `Recommended: graduated pump.fun coins ≤ ${s.max_age_h} h old, passing the on-chain checks (bundle ≤ ${pct(s.bundle_max, 0)}), ` +
     `mcap ≤ ${usd(s.max_mcap_usd)}, at least ${pct(s.show_dd, 0)} below their top. Starred coins are in the Watchlist tab (they only count as recommended if they pass). SOL $${state.sol_usd.toFixed(0)}.`;
   const cs = state.coins.filter(inTab);
+  const listView = (state.settings || {}).card_view === "list";
   const srch = SEARCH_TABS.includes(tab);
   $("#search").classList.toggle("show", srch);
   $("#qcnt").textContent = srch && query ? `${cs.length} match${cs.length === 1 ? "" : "es"}` : "";
@@ -1187,7 +1493,8 @@ function render() {
   const emptyTab = { all: "Nothing recommended right now. Waiting for graduates that dip…", watch: "Your watchlist is empty. Tap ☆ on a coin to add it.",
                   hidden: "You haven't hidden any coin.", filtered: "No coins filtered out right now." }[tab] || "No coin in this stage right now.";
   $("#grid").innerHTML = NEEDS_ALL.includes(tab) && !state.all ? '<div class="empty">Loading…</div>' :
-    cs.length ? cs.map(card).join("") : tab === "all" ? "" : `<div class="empty">${esc(empty || emptyTab)}</div>`;
+    cs.length ? cs.map(listView ? lrow : card).join("") : tab === "all" ? "" : `<div class="empty">${esc(empty || emptyTab)}</div>`;
+  $("#grid").classList.toggle("listv", listView);
   cardsReady = true;
   updateRadar();
   if (focusScroll) {
@@ -1195,18 +1502,20 @@ function render() {
     if (el) { el.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "center" }); focusScroll = false; }
   }
   $("#log").innerHTML = state.alerts.length ? "<b>Alerts</b> · tap one to copy its CA" + state.alerts.slice(-15).reverse().map((a) =>
-    `<div data-copy="${esc(a.mint)}">${new Date(a.ts * 1000).toLocaleTimeString()} · ${a.kind === "entry" ? "🟢" : "🔔"} ${esc(a.text)}</div>`).join("") : "";
+    `<div data-copy="${esc(a.mint)}">${new Date(a.ts * 1000).toLocaleTimeString()} · ${AICON[a.kind] || "🔔"} ${esc(a.text)}</div>`).join("") : "";
   const last = state.alerts[state.alerts.length - 1];
   $("#latest").classList.toggle("show", !!last);
   if (last) {
-    $("#latesttext").textContent = `${new Date(last.ts * 1000).toLocaleTimeString()} · ${last.kind === "entry" ? "🟢" : "🔔"} ${last.text}`;
+    $("#latesttext").textContent = `${new Date(last.ts * 1000).toLocaleTimeString()} · ${AICON[last.kind] || "🔔"} ${last.text}`;
     $("#latestcopy").dataset.copy = last.mint; $("#latestcopy").hidden = !last.mint;
   }
 }
 
 function beep(kind) {
   if (!soundOn || !audio) return;
-  const notes = kind === "entry" ? [660, 880, 1100] : [520, 660];
+  const snd = (state && state.settings && state.settings.sound) || "chime";
+  if (snd === "off") return;
+  const notes = snd === "beep" ? [880] : snd === "alarm" ? [1200, 900, 1200, 900, 1200, 900] : kind === "entry" ? [660, 880, 1100] : [520, 660];
   notes.forEach((f, i) => {
     const o = audio.createOscillator(), g = audio.createGain(), t = audio.currentTime + i * 0.18;
     o.frequency.value = f; o.connect(g); g.connect(audio.destination);
@@ -1232,7 +1541,7 @@ function handleAlerts() {
   flash(fresh.every((a) => a.kind === "px"));
   beep(fresh.some((a) => a.kind === "entry") ? "entry" : "new");
   if ("Notification" in window && Notification.permission === "granted")
-    fresh.forEach((a) => new Notification({ entry: "Entry signal", test: "Test alert", px: "Price alert" }[a.kind] || "New coin to check", { body: a.text }));
+    fresh.forEach((a) => new Notification({ entry: "Entry signal", test: "Test alert", px: "Price alert", danger: "DANGER", grad: "Graduated" }[a.kind] || "New coin to check", { body: a.text }));
   document.title = "(" + fresh.length + ") Sweden terminal";
   setTimeout(() => (document.title = "Sweden terminal"), 8000);
 }
@@ -1311,7 +1620,13 @@ const PCT = ["bundle_max", "top10_max", "sniper_max", "dev_max", "show_dd", "dd_
 const FIELDS = [
   ["Alerts", [["ntfy_topic", "ntfy topic", "text", "Your own topic in the ntfy app (letters, digits, - and _)"],
               ["alert_new", "Alert: new coin to check", "bool"], ["alert_entry", "Alert: entry signal", "bool"],
-              ["alert_watch", "Alerts for watchlist coins outside the filter", "bool", "new / entry alerts for starred coins that don't pass your filter"]]],
+              ["alert_watch", "Alerts for watchlist coins outside the filter", "bool", "new / entry alerts for starred coins that don't pass your filter"],
+              ["alert_danger", "Danger alerts for coins you hold", "bool", "the dev or a big holder dumps while your wallet holds the coin"],
+              ["alert_grad", "Alert when a starred coin graduates", "bool"],
+              ["quiet_from", "Quiet hours from", "select", "no new / entry pushes in this window (the page still shows them; price alerts always push)", "", [["-1", "off"]].concat([...Array(24).keys()].map((h) => [String(h), String(h).padStart(2, "0") + ":00"]))],
+              ["quiet_to", "Quiet hours until", "select", "", "", [["-1", "off"]].concat([...Array(24).keys()].map((h) => [String(h), String(h).padStart(2, "0") + ":00"]))],
+              ["daily_hour", "Daily summary push at", "select", "the last 24 h: signals and how they did, your wallet's realized profit", "", [["-1", "off"]].concat([...Array(24).keys()].map((h) => [String(h), String(h).padStart(2, "0") + ":00"]))],
+              ["sound", "Alert sound on the page", "select", "", "", [["chime", "Chime"], ["beep", "Short beep"], ["alarm", "Alarm"], ["off", "Off"]]]]],
   ["Filter", [["max_age_h", "Max coin age", "num", "", "h"], ["max_mcap_usd", "Max market cap", "num", "", "$"],
               ["bundle_max", "Max bundle", "num", "launch-slot buyers at graduation", "%"], ["top10_max", "Max top 10 holders", "num", "", "%"],
               ["sniper_max", "Max snipers", "num", "", "%"], ["dev_max", "Dev holding limit", "num", "only colours the tile", "%"],
@@ -1335,14 +1650,17 @@ function applyStyle(st) {
   document.querySelector('meta[name="theme-color"]').content = st.bg;
 }
 function settingsHtml(st) {
-  const row = ([k, label, type, help, unit]) => {
+  const row = ([k, label, type, help, unit, opts]) => {
     const v = st[k], id = "s_" + k;
-    const input = type === "bool" ? `<input type="checkbox" id="${id}" ${v ? "checked" : ""}>` :
+    const input = type === "select" ? `<select id="${id}">${opts.map(([ov, ol]) => `<option value="${ov}"${String(v) === ov ? " selected" : ""}>${ol}</option>`).join("")}</select>` :
+      type === "bool" ? `<input type="checkbox" id="${id}" ${v ? "checked" : ""}>` :
       type === "text" ? `<input type="text" id="${id}" value="${esc(v)}" autocomplete="off" spellcheck="false">` :
       `<input type="number" id="${id}" step="any" value="${PCT.includes(k) ? +(v * 100).toFixed(2) : v}">`;
     return `<div class="row"><label for="${id}">${label}${help ? `<small>${help}</small>` : ""}</label>${input}${unit ? `<span class="unit">${unit}</span>` : ""}</div>`;
   };
-  return `<div class="sec"><h3>Account</h3><div class="row"><label>${esc(state.email)}</label><button class="iconbtn" id="slogout">Log out</button></div></div>` +
+  return `<div class="sec"><h3>Account</h3><div class="row"><label>${esc(state.email)}</label><button class="iconbtn" id="slogout">Log out</button></div>
+      <div class="row"><label>Daily summary<small>what the daily push would say right now</small></label><button class="iconbtn" id="sdaily">Preview</button></div>
+      <pre id="sdailyout" style="display:none;white-space:pre-wrap;font:12px/1.4 ui-monospace,monospace;color:var(--muted);background:var(--panel2);border-radius:8px;padding:8px;margin:4px 0 0"></pre></div>` +
     FIELDS.map(([t, rows]) => `<div class="sec"><h3>${t}</h3>${rows.map(row).join("")}</div>`).join("") +
     `<div class="sec"><h3>Wallet</h3><div class="row"><label for="s_wallet">Wallet address<small>Public Solana address - balance, positions and profit in the header and on the portfolio page. Never enter a private key.</small></label></div>
       <div class="row"><input type="text" id="s_wallet" style="width:100%" value="${esc((state.wallet || {}).address || "")}" autocomplete="off" spellcheck="false" placeholder="e.g. 7xKX…"></div></div>` +
@@ -1350,6 +1668,8 @@ function settingsHtml(st) {
       `<button type="button" data-preset="${n}"><i style="background:${c[0]}"></i><i style="background:${c[3]}"></i>${n}</button>`).join("")}</div>` +
     [["bg", "Background"], ["panel", "Cards"], ["text", "Text"], ["accent", "Accent"]].map(([k, l]) =>
       `<div class="row"><label for="s_${k}">${l}</label><input type="color" id="s_${k}" value="${st[k]}"></div>`).join("") + `</div>` +
+    `<div class="sec"><h3>Layout</h3><div class="row"><label for="s_card_view">Coins as<small>big cards, or one compact row per coin</small></label>
+      <select id="s_card_view"><option value="cards"${st.card_view !== "list" ? " selected" : ""}>Cards</option><option value="list"${st.card_view === "list" ? " selected" : ""}>List</option></select></div></div>` +
     `<div class="sec"><h3>Empty screen</h3><div class="modes">${MODES.map(([k, l, d]) =>
       `<button type="button" data-mode="${k}" class="${st.radar_mode === k ? "on" : ""}">${l}<small>${d}</small></button>`).join("")}</div></div>`;
 }
@@ -1358,10 +1678,13 @@ function readSettings() {
   FIELDS.forEach(([, rows]) => rows.forEach(([k, , type]) => {
     const el = $("#s_" + k); if (!el) return;
     if (type === "bool") out[k] = el.checked;
+    else if (type === "select") out[k] = /^-?\d+$/.test(el.value) ? +el.value : el.value;
     else if (type === "text") out[k] = el.value.trim();
     else if (el.value !== "") out[k] = PCT.includes(k) ? +el.value / 100 : +el.value;
   }));
   ["bg", "panel", "text", "accent"].forEach((k) => out[k] = $("#s_" + k).value);
+  if ($("#s_card_view")) out.card_view = $("#s_card_view").value;
+  out.tz_min = -new Date().getTimezoneOffset();               // quiet hours in your local time
   return out;
 }
 function openSettings(st) {
@@ -1369,6 +1692,10 @@ function openSettings(st) {
   draft = Object.assign({}, st && st.bg ? st : state.settings);
   $("#sbody").innerHTML = settingsHtml(draft);
   $("#settings").classList.add("show");
+  $("#sdaily").onclick = async () => {
+    try { const j = await (await fetch("/api/daily/preview", { method: "POST", headers: AH() })).json(); $("#sdailyout").textContent = j.text; $("#sdailyout").style.display = "block"; }
+    catch (e) { toast("No connection", false); }
+  };
   $("#slogout").onclick = () => { dropUser(); closeSettings(false); state = null; $("#grid").innerHTML = ""; $("#radar").hidden = true; showAccount("login"); };
   $("#sbody").querySelectorAll('input[type=color]').forEach((el) => el.oninput = () => { draft = readSettings(); styleKey = ""; applyStyle(draft); });
   $("#sbody").querySelectorAll("[data-preset]").forEach((b) => b.onclick = () => {
@@ -1421,7 +1748,7 @@ async function tick() {
     if (!$("#settings").classList.contains("show")) applyStyle(state.settings);
     $("#dot").className = "dot" + (state.live ? " live" : "");
     const n = state.coins.filter((c) => c.visible && !c.user_hidden).length;
-    $("#status").innerHTML = (state.live ? "live" : "loading history…") + ` · ${n} shown<span class="long"> · ${new Date().toLocaleTimeString()}</span>`;
+    $("#status").innerHTML = (state.live ? "live" : "loading history…") + ` · ${n} shown<span class="long"> · SOL $${(state.sol_usd || 0).toFixed(2)} · ${new Date().toLocaleTimeString()}</span>`;
     handleAlerts(); render(); renderWalletChips();
   } catch (e) { $("#dot").className = "dot"; $("#status").textContent = "no connection to the terminal"; }
 }
@@ -1507,6 +1834,9 @@ $("#testpush").onclick = async () => {
 $("#search .si").innerHTML = ic("search");
 $("#pasteca").innerHTML = ic("paste") + "<span>Paste CA</span>";
 $("#pasteca").onclick = pasteFromClipboard;
+$("#opensignals").innerHTML = ic("signal") + "<span>Signals</span>";
+$("#opensignals").onclick = () => { location.hash = "#signals"; };
+$("#openrecent").innerHTML = ic("clock"); $("#openrecent").onclick = showRecent;
 $("#q").addEventListener("input", (e) => { query = e.target.value.trim().toLowerCase(); $("#search").classList.toggle("has", !!query); render(); });
 $("#qclear").onclick = () => { $("#q").value = ""; query = ""; $("#search").classList.remove("has"); render(); $("#q").focus(); };
 $("#axcancel").onclick = () => $("#ax").classList.remove("show");

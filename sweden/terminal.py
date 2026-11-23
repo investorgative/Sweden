@@ -37,6 +37,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 sys.path.insert(0, os.path.dirname(__file__))
 import accounts as A
 import replay as R
+import signals as SG
 import wallet as WL
 from grad_replay import SKIP, WSOL, sol_usd
 
@@ -213,6 +214,9 @@ class Coin:
         self.last_trade = None
         self.trades = []                            # (slot, seq, ts, mcap SOL, SOL lamports, buy, wallet, tokens, pool?)
         self.liq_sol = None                         # real SOL in the curve / pool after the latest trade
+        self.res = None                             # (SOL lamports, raw tokens) reserves after the latest trade
+        self.fee = 0.0125                           # fee share of the latest trade
+        self.danger_at = {}                         # user id -> time of the last danger alert (throttle)
 
 
 def chart(c, now, n=90):
@@ -344,8 +348,8 @@ class Terminal:
         if kind == "C":
             ts, creator = r[3], r[5]
             hist = self.creators[creator]
-            prior = sum(1 for t in hist if ts - t < 86400)
-            hist.append(ts)
+            prior = sum(1 for x in hist if ts - x[0] < 86400)
+            hist.append((ts, mint, r[7], r[8]))
             earlier = R.copy_matches(self.names, ts, r[7], r[8], mint, self.graduated)
             if not r[12] and ((not history_only and ts >= time.time() - self.a.max_age - 1800) or mint in self._watched):
                 self.coins[mint] = Coin(r, prior, bool(earlier))
@@ -367,11 +371,17 @@ class Terminal:
                 c.trades.append((r[0], self.seq, r[3], mc, r[7], r[6], r[5], r[8], False))
                 if r[0] >= c.last_slot:
                     c.liq_sol = (r[9] - c.c["vsol0"]) / 1e9
+                    c.res = (r[9], r[10])
+                    c.fee = (r[11] + r[12]) / 1e4
                 self.check_px(c, mc)
+                if not r[6]:
+                    self.check_danger(c, r[5], r[8])
         elif kind == "G":
             if c.S is not None:
                 c.feat = c.S.features()
                 c.S = None                          # free the per-wallet state
+            if c.grad_ts is None:
+                self.watch_graduated(c)
             c.grad_ts = r[3]
         elif kind == "P":
             if r[9] == R.NO_CREATOR:                # a pool opened by hand, not the migration (fake graduation)
@@ -393,8 +403,12 @@ class Terminal:
                 c.trades.append((r[0], self.seq, r[3], Q / B * 1e6, quote, buy, r[5], base, True))
                 if r[0] >= c.last_slot:
                     c.liq_sol = (pq + quote if buy else pq - quote) / 1e9
+                    c.res = (Q, B)
+                    c.fee = r[12] / 1e4
                 self.price_update(c, Q / B, r[3], r[0])
                 self.check_px(c, Q / B * 1e6)
+                if not buy:
+                    self.check_danger(c, r[5], base)
 
     def price_update(self, c, p, ts, slot):
         b = c.pts.get(ts // 5)                          # swaps arrive over several connections, not in order
@@ -442,12 +456,45 @@ class Terminal:
             tag = " (watchlist, outside your filter)" if watch_only else ""
             if vis and not st.seen:
                 st.seen = True
+                if self.live:
+                    self.signals.add(uid, c, "new", watch_only, self.usd)
                 if s["alert_new"]:
                     self.alert(c, uid, "new", f"{c.sym} is {dd:.0%} below its top - check the meme{tag}")
             if vis and st.stage == "entry" and old != "entry" and st.armed:
                 st.entries, st.armed = st.entries + 1, False
+                if self.live:
+                    self.signals.add(uid, c, "entry", watch_only, self.usd)
                 if s["alert_entry"]:
                     self.alert(c, uid, "entry", f"{c.sym}: ENTRY - bounced and pulled back {self.mcap_text(c)}{tag}")
+
+    def check_danger(self, c, wallet, tok):
+        """A coin someone holds: the dev or a big holder (>= 3 % of supply) just sold at least half of their tokens."""
+        if not self.live:
+            return
+        left = max(0, c.H.hold.get(wallet, 0))
+        before = left + tok
+        if before <= 0 or tok < 0.5 * before:
+            return
+        dev = wallet in c.H.devs
+        if not dev and before < 0.03 * R.SUPPLY:
+            return
+        who = "the dev" if dev else f"a holder of {before / R.SUPPLY:.0%}"
+        what = "sold everything" if left < 0.01 * before else f"sold {tok / before:.0%} of their tokens"
+        for uid, u in self.acc.users().items():
+            if not u["settings"].get("alert_danger", True):
+                continue
+            b = self.wallets.brief(uid).get(c.mint)
+            if not b or b["amount"] <= 0 or time.time() - c.danger_at.get(uid, 0) < 300:
+                continue
+            c.danger_at[uid] = time.time()
+            self.alert(c, uid, "danger", f"{c.sym}: {who} {what} (= {tok / R.SUPPLY:.1%} of supply) - you hold this coin")
+
+    def watch_graduated(self, c):
+        if not self.live:
+            return
+        for uid, u in self.acc.users().items():
+            if c.mint in u["watch"] and u["settings"].get("alert_grad", True):
+                self.alert(c, uid, "grad", f"{c.sym} graduated to PumpSwap (watchlist)")
 
     def check_px(self, c, mcap_sol):
         """Fire the price / mcap alerts set on this coin (one-shot)."""
@@ -520,6 +567,8 @@ class Terminal:
         self.alerts[uid].append(dict(id=self.alert_id, kind=kind, mint=c.mint, text=text, ts=time.time()))
         log("ALERT", f"user {uid}", kind, c.mint, text)
         topic = self.acc.users()[uid]["settings"]["ntfy_topic"]
+        if kind in ("new", "entry") and self.acc.quiet(uid):   # quiet hours: the page still shows it, no push
+            topic = ""
         if topic:
             threading.Thread(target=self.push, args=(topic, kind, c, text), daemon=True).start()
 
@@ -529,9 +578,9 @@ class Terminal:
         try:
             req = urllib.request.Request(f"https://ntfy.sh/{urllib.parse.quote(topic)}",
                                          data=(text + ("\n" + c.mint if c else "")).encode(),
-                                         headers={"Title": "Sweden: " + {"entry": "ENTRY", "new": "new coin",
-                                                                          "px": "price alert"}.get(kind, kind),
-                                                  "Priority": "high" if kind in ("entry", "px") else "default",
+                                         headers={"Title": "Sweden: " + {"entry": "ENTRY", "new": "new coin", "px": "price alert",
+                                                                          "danger": "DANGER", "grad": "graduated"}.get(kind, kind),
+                                                  "Priority": "urgent" if kind == "danger" else "high" if kind in ("entry", "px") else "default",
                                                   **({"Click": f"https://axiom.trade/meme/{c.pool or c.mint}?chain=sol"} if c else {})})
             urllib.request.urlopen(req, timeout=10).read()
             return True
@@ -549,6 +598,60 @@ class Terminal:
             return False, "test alert shown - no ntfy topic set (Settings > Alerts)"
         ok = self.push(topic, "test", None, "Test from the Sweden terminal - push works")
         return ok, "test alert + push sent - check your phone" if ok else "push failed (see logs/terminal.log)"
+
+    def daily_text(self, uid):
+        """The last 24 h in a few lines: signals and how they did, the wallet's realized profit."""
+        rows = self.signals.list(uid, 1)
+        summ = self.signals.summary(rows)
+        lines = []
+        for kind, label in (("new", "Recommended"), ("entry", "Entry signals")):
+            s = summ.get(kind)
+            if not s:
+                continue
+            lv = s["levels"]["35"]
+            dec = lv["tp"] + lv["sl"]
+            lines.append(f"{label}: {s['n']} · median best {s['med_max']:+.0%}, worst {s['med_min']:+.0%}"
+                         + (f" · ±35 %: up first {lv['tp']}/{dec}" if dec else ""))
+            best = max((r for r in rows if r["kind"] == kind), key=lambda r: r["max_pct"], default=None)
+            if best:
+                lines.append(f"  best: ${best['sym']} {best['max_pct']:+.0%}")
+        if not lines:
+            lines.append("No signals in the last 24 h.")
+        try:
+            w = self.wallets.full(uid)
+            if w.get("pnl"):
+                s = w["summary"]
+                closed = [r for r in w["closed"] if r.get("pnl_sol") is not None and r["last"] and r["last"] >= time.time() - 86400]
+                lines.append(f"Wallet: {usd_text(s['total_vis_usd'])} · realized 24 h {w['pnl']['r24h']:+.2f} SOL")
+                if closed:
+                    b = max(closed, key=lambda r: r["pnl_sol"]); x = min(closed, key=lambda r: r["pnl_sol"])
+                    lines.append(f"  best trade {b.get('sym') or b['mint'][:4]} {b['pnl_sol']:+.2f} SOL · worst {x.get('sym') or x['mint'][:4]} {x['pnl_sol']:+.2f} SOL")
+        except Exception:
+            pass
+        return "\n".join(lines)
+
+    def daily_worker(self):
+        """At each user's chosen hour (local time), push the daily summary once a day."""
+        sent = {}
+        while True:
+            time.sleep(60)
+            for uid, u in list(self.acc.users().items()):
+                s = u["settings"]
+                if s.get("daily_hour", -1) < 0 or not s.get("ntfy_topic"):
+                    continue
+                lt = time.gmtime(time.time() + s.get("tz_min", 0) * 60)
+                day = time.strftime("%Y-%m-%d", lt)
+                if lt.tm_hour != s["daily_hour"] or sent.get(uid) == day:
+                    continue
+                sent[uid] = day
+                try:
+                    text = self.daily_text(uid)
+                    urllib.request.urlopen(urllib.request.Request(
+                        f"https://ntfy.sh/{urllib.parse.quote(s['ntfy_topic'])}", data=text.encode(),
+                        headers={"Title": "Sweden: your last 24 h"}), timeout=10).read()
+                    log(f"daily summary sent to user {uid}")
+                except Exception as e:
+                    log("daily summary failed:", repr(e))
 
     def link_worker(self):
         """The Cloudflare link changes on every tunnel start: push a new one to every user's ntfy topic."""
@@ -604,10 +707,17 @@ class Terminal:
                         c.ust[uid].seen = True
         log(f"live: {self.events} events read, {sum(1 for c in self.coins.values() if c.grad_ts)} graduated coins "
             f"in the window, SOL ${self.usd:.0f}")
-        last_prune = time.time()
+        last_prune = last_sig = time.time()
         while True:
             time.sleep(2)
             self.poll()
+            if time.time() - last_sig > 60:              # follow the recorded signals' outcomes
+                last_sig = time.time()
+                with self.lock:
+                    try:
+                        self.signals.update(self.coins)
+                    except Exception as e:
+                        log("signals:", repr(e))
             if time.time() - last_prune > 600:
                 last_prune = time.time()
                 with self.lock:
@@ -615,7 +725,7 @@ class Terminal:
                     keep = self.watched()                    # watchlist coins stay until they are unstarred
                     self.coins = {m: c for m, c in self.coins.items() if c.ts >= cut or m in keep}
                     for k in list(self.creators):
-                        self.creators[k] = [t for t in self.creators[k] if t >= time.time() - 86400]
+                        self.creators[k] = [x for x in self.creators[k] if x[0] >= time.time() - HISTORY_S]
                         if not self.creators[k]:
                             del self.creators[k]
                     cut = time.time() - HISTORY_S
@@ -752,8 +862,51 @@ class Terminal:
                             top3_trades=f.get("top3_trade_share"), same_sizes=f.get("same_size_share")))
             trades = [dict(ts=x[2], buy=x[5], sol=x[4] / 1e9, usd=x[4] / 1e9 * usd, tokens=x[7], mcap_usd=x[3] * usd,
                            wallet=x[6], pool=x[8], tags=tags(x[6])) for x in reversed(tr[-100:])]
+            # top traders: per wallet SOL in / out, tokens left (valued at the latest price), profit
+            per = {}
+            for x in tr:
+                p = per.setdefault(x[6], [0.0, 0.0, 0, 0, 0, 0, x[2]])   # bought SOL, sold SOL, bought tok, sold tok, buys, sells, first
+                if x[5]:
+                    p[0] += x[4] / 1e9; p[2] += x[7]; p[4] += 1
+                else:
+                    p[1] += x[4] / 1e9; p[3] += x[7]; p[5] += 1
+            def exit_sol(t):                                     # what selling t raw tokens now would return
+                if not c.res or t <= 0:
+                    return 0.0
+                Q, B = c.res
+                return Q * t / (B + t) / 1e9
+            top = []
+            for w, (b, sd, bt, st_, nb, ns, first) in per.items():
+                left = max(0, c.H.hold.get(w, 0))
+                val = exit_sol(left)
+                top.append(dict(wallet=w, bought=b, sold=sd, left_sol=val, pnl=sd + val - b, buys=nb, sells=ns, first=first,
+                                left_share=left / R.SUPPLY, tags=tags(w)))
+            top.sort(key=lambda r: -r["pnl"])
+            traders = top[:15] + [r for r in top[-5:] if r not in top[:15]]
+            # buy / sell pressure
+            def pressure(sec):
+                xs = [x for x in tr if x[2] >= now - sec]
+                b = sum(x[4] for x in xs if x[5]) / 1e9
+                sd = sum(x[4] for x in xs if not x[5]) / 1e9
+                return dict(buy=b, sell=sd, net=b - sd, buyers=len({x[6] for x in xs if x[5]}), sellers=len({x[6] for x in xs if not x[5]}))
+            press = {k: pressure(v) for k, v in (("1m", 60), ("5m", 300), ("15m", 900))}
+            # the dev's other launches in our data (last 72 h)
+            devs = []
+            for ts_, m2, name2, sym2 in sorted(self.creators.get(c.c["creator"], []), reverse=True):
+                if m2 == mint:
+                    continue
+                c2 = self.coins.get(m2)
+                ath = max((x[3] for x in c2.trades), default=None) if c2 and c2.trades else None
+                devs.append(dict(mint=m2, name=name2, sym=sym2, age_min=(now - ts_) / 60, graduated=m2 in self.graduated,
+                                 ath_usd=ath * usd if ath else None))
             holders = [dict(wallet=w, share=t / R.SUPPLY, tags=tags(w)) for w, t in held[:20]]
-        return dict(info=info, trades=trades, holders=holders, sol_usd=self.usd,
+        mine = self.mine(self.wallets.brief(uid), mint, info["mcap_usd"], with_trades=True)
+        info["note"] = self.acc.users()[uid]["notes"].get(mint)
+        with self.lock:
+            c = self.coins.get(mint)
+            info["res"] = list(c.res) if c and c.res else None
+            info["fee"] = c.fee if c else None
+        return dict(info=info, trades=trades, holders=holders, sol_usd=self.usd, traders=traders, pressure=press, dev=devs[:30], mine=mine,
                     alerts=[a for a in self.acc.px_list(uid) if a["mint"] == mint])
 
     def candles(self, mint, tf):
@@ -792,9 +945,22 @@ class Terminal:
         log("axiom check saved", c.sym, vals)
         return True
 
+    def mine(self, brief, mint, mcap_usd, with_trades=False):
+        """The user's own position in a coin (from the wallet), or None."""
+        b = brief.get(mint)
+        if not b or (b["amount"] <= 0 and not b["trades"]):
+            return None
+        entry = b["entry_mcap_sol"] * self.usd if b["entry_mcap_sol"] else None
+        out = dict(amount=b["amount"], value_usd=b["amount"] * mcap_usd / 1e9, entry_mcap_usd=entry,
+                   pnl=(mcap_usd / entry - 1) if entry and mcap_usd else None)
+        if with_trades:
+            out["trades"] = b["trades"]
+        return out
+
     def state(self, uid, show_all):
         now = time.time()
         u = self.acc.users()[uid]
+        brief = self.wallets.brief(uid)
         s = u["settings"]
         out, counts, radar = [], {"filtered": 0, "hidden": 0, "waiting": 0}, []
         with self.lock:
@@ -829,7 +995,8 @@ class Terminal:
                                 top3_trades=f.get("top3_trade_share"), same_sizes=f.get("same_size_share"),
                                 prior=f.get("prior_launches"), copy=f.get("copy"), dev_sold=f.get("dev_sold"),
                                 traders=f.get("traders")),
-                    live=c.H.metrics(), meta=c.meta or {}))
+                    live=c.H.metrics(), meta=c.meta or {}, mine=self.mine(brief, c.mint, self.mcap_usd(c)),
+                    note=u["notes"].get(c.mint)))
             alerts = list(self.alerts[uid])
         self.wallets.touch(uid)
         return dict(now=now, live=self.live, sol_usd=self.usd, coins=out, alerts=alerts, all=show_all, counts=counts,
@@ -914,6 +1081,10 @@ def serve(t, port):
                           else {"error": "bad timeframe"})
             elif u.path == "/api/pxalerts":
                 self.send(200, {"alerts": acc.px_list(uid)})
+            elif u.path == "/api/signals":
+                days = min(30, max(1, int(q.get("days", ["7"])[0]) if q.get("days", ["7"])[0].isdigit() else 7))
+                rows = t.signals.list(uid, days)
+                self.send(200, {"signals": rows[:500], "summary": t.signals.summary(rows), "sol_usd": t.usd})
             elif u.path == "/api/wallet":
                 t.wallets.touch(uid)
                 self.send(200, t.wallets.full(uid))
@@ -969,6 +1140,14 @@ def serve(t, port):
                     return self.send(200, {"ok": True, "alerts": acc.px_list(uid)})
                 except (KeyError, TypeError, ValueError):
                     return self.send(400, {"ok": False})
+            if p == "/api/daily/preview":
+                return self.send(200, {"text": t.daily_text(uid)})
+            if p == "/api/note":
+                try:
+                    acc.set_note(uid, str(b["mint"])[:64], str(b.get("text", "")), str(b.get("tag", "")))
+                    return self.send(200, {"ok": True})
+                except (KeyError, TypeError):
+                    return self.send(400, {"ok": False})
             if p == "/api/wallet/set":
                 ok = t.wallets.set_address(uid, str(b.get("address", "")))
                 return self.send(200 if ok else 400, {"ok": ok, "error": None if ok else "that is not a Solana address"})
@@ -1018,14 +1197,16 @@ def main():
         top10_max=R.FILTER["top10_pct"], sniper_max=R.FILTER["sniper_pct"], dev_max=R.FILTER["dev_pct"],
         prior_max=R.FILTER["max_prior_launches"], copy_check=True, wash_check=True, mayhem=a.mayhem,
         show_dd=a.show_dd, dd_min=a.dd_min, dd_max=a.dd_max, bounce=a.bounce, pullback=a.pullback,
-        alert_new=True, alert_entry=True, alert_watch=True, ntfy_topic="",
+        alert_new=True, alert_entry=True, alert_watch=True, alert_danger=True, alert_grad=True, ntfy_topic="", quiet_from=-1, quiet_to=-1, tz_min=0,
+        sound="chime", card_view="cards", daily_hour=-1,
         bg="#07080c", panel="#0f1117", text="#e9ecf5", accent="#526fff", radar_mode="radar")
     acc = A.Accounts(os.path.join(R.DATA, "users.db"), os.path.join(R.DATA, "secret.key"), MAIL_FILE, defaults,
                      prefs_file=PREFS_FILE, owner_topic=os.environ.get("SWEDEN_NTFY_TOPIC", ""))
     t = Terminal(a, acc)
+    t.signals = SG.Signals(os.path.join(R.DATA, "signals.db"))
     t.wallets = WL.Wallets(os.path.join(R.DATA, "wallets.db"), HELIUS_KEY_FILE, t.token_price)
     t.wallets.sol_usd = lambda: t.usd
-    for target in (t.loop, t.meta_worker, t.price_worker, t.link_worker, t.wallets.worker):
+    for target in (t.loop, t.meta_worker, t.price_worker, t.link_worker, t.wallets.worker, t.daily_worker):
         threading.Thread(target=target, daemon=True).start()
     log(f"SWEDEN terminal on http://0.0.0.0:{a.port}  ({len(acc.users())} account(s), "
         f"mail: {'Gmail' if acc.mailer.cfg else 'not set up - codes go to this log'}, "
