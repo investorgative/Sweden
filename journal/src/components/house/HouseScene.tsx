@@ -10,23 +10,39 @@ import { useEffect, useId, useMemo, useState, type PointerEvent, type Ref } from
  * rain falls and the lights dim when you are deep in a drawdown.
  */
 
-export const HOUSE_STAGES = [
-  { at: 0, name: 'The plot', desc: 'You bought the land. Every trade is a brick.' },
-  { at: 0.05, name: 'Foundation', desc: 'Concrete poured — risk management first.' },
-  { at: 0.13, name: 'Timber frame', desc: 'The skeleton rises. Your process takes shape.' },
-  { at: 0.3, name: 'Walls & cladding', desc: 'Black-stained timber, board by board.' },
-  { at: 0.46, name: 'Roof', desc: 'A roof over your head — protected from the storms.' },
-  { at: 0.55, name: 'Glass & doors', desc: 'Floor-to-ceiling windows facing the lake.' },
-  { at: 0.63, name: 'Lights on', desc: 'Someone is home. It is starting to feel real.' },
-  { at: 0.75, name: 'Deck & garden', desc: 'Pines, a stone path and a deck over the water.' },
-  { at: 0.86, name: 'Sauna & jetty', desc: 'A wood-fired sauna and a boat at the jetty.' },
-  { at: 1, name: 'Keys in hand', desc: 'Fully funded. Welcome home.' },
+/** The stages: `usd` = money needed with a $10,000 goal (scaled to the user's goal), `at` = how far the drawing is built.
+ *  Many small steps early (12 before $500), bigger ones later. */
+const STAGES = [
+  { usd: 0, at: 0, name: 'The plot', desc: 'You bought the land. Every trade is a brick.' },
+  { usd: 5, at: 0.01, name: 'Survey stakes', desc: 'The corners are marked. It starts here.' },
+  { usd: 10, at: 0.02, name: 'Clearing the land', desc: 'Trees out, ground levelled.' },
+  { usd: 25, at: 0.03, name: 'Digging', desc: 'The excavator is on site.' },
+  { usd: 50, at: 0.04, name: 'Formwork', desc: 'Boards and rebar for the foundation.' },
+  { usd: 75, at: 0.05, name: 'Foundation', desc: 'Concrete poured — risk management first.' },
+  { usd: 100, at: 0.08, name: 'Ground floor slab', desc: 'Something to stand on.' },
+  { usd: 150, at: 0.1, name: 'First beams', desc: 'The first timber is up.' },
+  { usd: 200, at: 0.13, name: 'Timber frame', desc: 'The skeleton rises. Your process takes shape.' },
+  { usd: 250, at: 0.2, name: 'Upper frame', desc: 'The second floor takes shape.' },
+  { usd: 300, at: 0.3, name: 'Walls', desc: 'Black-stained timber, board by board.' },
+  { usd: 400, at: 0.38, name: 'Cladding', desc: 'The outside is closed.' },
+  { usd: 500, at: 0.42, name: 'Roof beams', desc: 'The roof line is drawn against the sky.' },
+  { usd: 750, at: 0.46, name: 'Roof', desc: 'A roof over your head — protected from the storms.' },
+  { usd: 1000, at: 0.52, name: 'Windows', desc: 'Floor-to-ceiling glass facing the lake.' },
+  { usd: 1500, at: 0.55, name: 'Doors', desc: 'It can be locked now.' },
+  { usd: 2000, at: 0.63, name: 'Lights on', desc: 'Someone is home. It is starting to feel real.' },
+  { usd: 2500, at: 0.66, name: 'Interior', desc: 'Floors, walls, a kitchen.' },
+  { usd: 3000, at: 0.7, name: 'Furniture', desc: 'A sofa by the window.' },
+  { usd: 4000, at: 0.75, name: 'Garden', desc: 'Pines and a stone path.' },
+  { usd: 5000, at: 0.8, name: 'Deck', desc: 'A deck over the water.' },
+  { usd: 6000, at: 0.86, name: 'Sauna', desc: 'A wood-fired sauna by the lake.' },
+  { usd: 7500, at: 0.93, name: 'Jetty', desc: 'A boat at the jetty.' },
+  { usd: 10000, at: 1, name: 'Keys in hand', desc: 'Fully funded. Welcome home.' },
 ] as const
 
-/** Money needed for each stage as a share of the goal: exponential (each step ~2.1x the last, the first at 1/400 of the
- *  goal), so a small account gets many steps early - with a $10K goal: $25, $53, $112, $236, $500, $1.1K, $2.2K, $4.7K,
- *  $10K. The drawing keeps its own stage positions (`at`); houseProgress maps money onto them. */
-export const STAGE_MONEY: number[] = HOUSE_STAGES.map((_, i) => (i === 0 ? 0 : Math.pow(1 / 400, (HOUSE_STAGES.length - 1 - i) / (HOUSE_STAGES.length - 2))))
+export const HOUSE_STAGES = STAGES.map(({ at, name, desc }) => ({ at, name, desc }))
+
+/** Money needed for each stage as a share of the goal. */
+export const STAGE_MONEY: number[] = STAGES.map((s) => s.usd / 10000)
 
 /** share of the goal earned (0..1) -> progress of the drawing (0..1), linear between the stages' money thresholds */
 export function houseProgress(f: number) {

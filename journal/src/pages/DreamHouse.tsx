@@ -191,7 +191,7 @@ export function DreamHouse() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         {/* stage timeline */}
         <Card className="lg:col-span-7">
-          <CardHeader icon={<Hammer size={15} />} title="Construction log" subtitle="The steps roughly double - many early, so the first dollars count" />
+          <CardHeader icon={<Hammer size={15} />} title="Construction log" subtitle="24 steps - many small ones early, so the first dollars count" />
           <div className="relative p-5 sm:p-6">
             <div className="absolute bottom-10 left-[39px] top-10 w-px bg-line sm:left-[43px]" />
             <div className="space-y-1">
@@ -210,7 +210,7 @@ export function DreamHouse() {
                     </div>
                     <div className="text-right">
                       <Money value={s.target} compact className={cx('text-[13px]', done ? 'text-ink-2' : 'text-ink-4')} />
-                      <div className="text-[10.5px] text-ink-4">{done ? dateLong(s.date!) : `${pct(s.target / settings.goalAmount, s.target / settings.goalAmount < 0.1 ? 1 : 0)} of goal`}</div>
+                      <div className="text-[10.5px] text-ink-4">{done ? dateLong(s.date!) : `${pct(s.target / settings.goalAmount, s.target / settings.goalAmount < 0.01 ? 2 : s.target / settings.goalAmount < 0.1 ? 1 : 0)} of goal`}</div>
                     </div>
                   </motion.div>
                 )
