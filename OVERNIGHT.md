@@ -57,6 +57,11 @@ recommendations / entries they would have given and how those moved. Example ton
   fees; the slippage cancels out on a constant-product curve), break-even mcap. Matches the measured -3.1 % round trip.
 - **Your note** + tags (👍 good meme, 🚩 rug, 👀 watch, ⏭ skip): shown on the card / list row, searchable, also next
   to closed positions in the portfolio (a trade journal).
+- **Linked wallets** tab (a lean bubble map, key L): for the top 20 holders, who sent them their first SOL? Holders
+  funded by the same wallet are grouped ("4 wallets · 18 % funded by 7xKX…", count them as one holder), plus the
+  share of fresh wallets. Funders with a huge history (exchanges / services) are marked and not counted as linked.
+  ~60 Helius credits per check, ~13 s, cached 10 min. Your original filter ideas "linked wallets count as one holder"
+  and "fresh-wallet share", on demand.
 - **Data quality + gap repair**: shows whether the coin's trade record is complete ("complete ✓" / "N gaps") and a
   "fix" button. At graduation the terminal fetches missing trades from the chain (Helius, 1 credit each, max 120
   per coin automatically, 400 with the button, 10,000 per day) and recomputes holders / bundle / snipers / top 10.

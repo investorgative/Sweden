@@ -970,7 +970,8 @@ function showCoin(mint) {
         <label class="wnote"><input type="checkbox" id="cpholders"${cp.showHolders ? " checked" : ""}> holders line</label></div>
       <div id="cpchart"><div class="msg">Loading chart…</div></div>
       <div class="cp-box"><div class="cp-tabs"><button class="tab" data-cptab="trades">Trades</button><button class="tab" data-cptab="traders">Top traders</button>
-        <button class="tab" data-cptab="holders">Top holders</button><button class="tab" data-cptab="dev">Dev history <span class="n" id="cpdevn"></span></button></div>
+        <button class="tab" data-cptab="holders">Top holders</button><button class="tab" data-cptab="linked">Linked wallets</button>
+        <button class="tab" data-cptab="dev">Dev history <span class="n" id="cpdevn"></span></button></div>
         <div class="tlwrap" id="cplist"></div></div>
     </div><aside class="cp-side">
       <div class="cp-box"><h4>${ic("bell")} Price / mcap alert</h4>
@@ -1210,6 +1211,23 @@ function renderList() {
       : '<div class="empty">No trades recorded.</div>';
     return;
   }
+  if (cp.tab === "linked") {
+    const L = cp.linked && cp.linked.mint === d.info.mint ? cp.linked.data : null;
+    if (!L) { $("#cplist").innerHTML = `<div class="wnote" style="padding:8px 0 10px">Like a bubble map: for the top 20 holders, who sent them their first SOL? Wallets funded by the same wallet are grouped (count them as one holder). Also the share of fresh wallets. Uses ~60 Helius credits, cached 10 min.</div>
+      <button class="iconbtn" id="cplinkbtn">Check linked wallets</button>`; $("#cplinkbtn").onclick = checkLinked; return; }
+    if (!L.ok) { $("#cplist").innerHTML = `<div class="wnote red" style="padding:8px 0">${esc(L.error || "failed")}</div>`; return; }
+    const fl = (f) => f ? `<a href="https://solscan.io/account/${esc(f)}" target="_blank" rel="noopener noreferrer">${esc(short(f))}</a>` : '<small class="muted">old / busy wallet</small>';
+    $("#cplist").innerHTML = `<div class="kv num" style="padding:6px 0 10px"><span>Linked (same funder)</span><b class="${L.linked_share > 0.15 ? "red" : ""}">${pct(L.linked_share, 1)} of supply in ${L.clusters.filter((c) => !c.busy).length} group(s)</b>
+        <span>Fresh wallets (new or < 50 transactions)</span><b class="${L.fresh_share > 0.2 ? "red" : ""}">${pct(L.fresh_share, 1)} of supply</b>
+        <span>Traced</span><b>${L.traced} of ${L.holders.length} top holders · ${secs(Date.now() / 1000 - L.ts)} ago <button class="iconbtn" id="cplinkbtn" style="padding:2px 7px;font-size:11px">again</button></b></div>` +
+      (L.clusters.length ? L.clusters.map((c) => `<div class="note" style="margin-bottom:6px"><b>${c.wallets.length} wallets · ${pct(c.share, 1)}</b>
+        <span>funded by ${fl(c.funder)}${c.dev ? ' <span class="tag dev">dev</span>' : ""}${c.busy ? ' <span class="tag sniper" title="this funder has a huge history: probably an exchange or service, so not counted as linked">exchange/service?</span>' : ""}</span></div>`).join("") : '<div class="wnote">No two top holders share a funder.</div>') +
+      `<table class="tlist num" style="margin-top:8px"><tr><th>Holder</th><th class="r">Share</th><th>Funded by</th><th></th></tr>` +
+      L.holders.map((r) => `<tr><td>${wLink(r.wallet)}${r.dev ? ' <span class="tag dev">dev</span>' : ""}</td><td class="r">${pct(r.share, 2)}</td><td>${fl(r.funder)}</td>
+        <td>${r.fresh ? '<span class="tag sniper">fresh</span>' : ""}</td></tr>`).join("") + "</table>";
+    $("#cplinkbtn").onclick = () => checkLinked(true);
+    return;
+  }
   if (cp.tab === "dev") {
     const dv = d.dev || [], i = d.info, grad = dv.filter((x) => x.graduated).length;
     $("#cplist").innerHTML = `<div class="wnote" style="padding:6px 0 10px">Dev wallet ${wLink(i.creator)} launched <b>${dv.length}</b> other coin${dv.length === 1 ? "" : "s"} in the last 72 h that we recorded${dv.length ? `, <b>${grad}</b> of them graduated` : ""}.</div>` +
@@ -1244,6 +1262,15 @@ async function repairCoin() {
     toast(j.ok ? `${j.recovered} trades recovered · gaps ${j.before[0] + j.before[1]} → ${j.after[0] + j.after[1]}` : (j.error || "repair failed"), !!j.ok);
     cpRefresh();
   } catch (e) { toast("No connection", false); }
+}
+async function checkLinked(force) {
+  const i = cp.data?.info; if (!i) return;
+  $("#cplist").innerHTML = '<div class="wnote" style="padding:10px 0">Tracing the funding of the top holders… (up to a minute)</div>';
+  try {
+    const d = await (await fetch("/api/linked", { method: "POST", headers: { "Content-Type": "application/json", ...AH() }, body: JSON.stringify({ mint: i.mint, force: !!force }) })).json();
+    cp.linked = { mint: i.mint, data: d };
+  } catch (e) { cp.linked = { mint: i.mint, data: { ok: false, error: "no connection" } }; }
+  renderList();
 }
 async function saveNote() {
   const i = cp.data?.info; if (!i) return;
@@ -1561,7 +1588,7 @@ function renderSignalRows(rows, sel) {
 const KEYS = [["Everywhere", [["?", "this overview"], ["S", "signals"], ["P", "portfolio"], [",", "settings"], ["/", "search (Filtered / Hidden / Watchlist)"],
                               ["Ctrl+V", "open the coin whose CA you paste"], ["Esc", "back / close"]]],
               ["Coin page", [["C", "copy CA"], ["A", "open on Axiom (also copies the CA)"], ["W", "add to / remove from watchlist"],
-                             ["1 – 7", "timeframe 1s … 1h"], ["M", "MCap / price"], ["T / R / H / D", "trades / top traders / holders / dev history"]]]];
+                             ["1 – 7", "timeframe 1s … 1h"], ["M", "MCap / price"], ["T / R / H / L / D", "trades / top traders / holders / linked wallets / dev history"]]]];
 function showKeys() {
   let el = $("#keyhelp");
   if (!el) {
@@ -1587,7 +1614,7 @@ document.addEventListener("keydown", (e) => {
     if (k === "w" || k === "W") return setPref(i.mint, i.watched ? "unwatch" : "watch");
     if (k >= "1" && k <= "7") return document.querySelector(`[data-tf="${TFS[+k - 1][0]}"]`)?.click();
     if (k === "m" || k === "M") return document.querySelector(`[data-cmode="${cp.mode === "mcap" ? "price" : "mcap"}"]`)?.click();
-    const tabk = { t: "trades", r: "traders", h: "holders", d: "dev" }[k.toLowerCase()];
+    const tabk = { t: "trades", r: "traders", h: "holders", l: "linked", d: "dev" }[k.toLowerCase()];
     if (tabk) return document.querySelector(`[data-cptab="${tabk}"]`)?.click();
   }
   if (k === "s" || k === "S") { location.hash = "#signals"; return; }

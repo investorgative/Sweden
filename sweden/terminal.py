@@ -320,6 +320,7 @@ class Terminal:
         self.seq = 0
         self.smart_list, self.smart_set = [], set()
         self.repair_q = queue.Queue()
+        self.linked_cache = {}
         self.repair_calls = collections.deque()          # times of Helius calls by the repair (daily budget)
         self._watched = set()
 
@@ -747,6 +748,91 @@ class Terminal:
                         left=max(0, len(missing) - budget))
         log(f"repair {c.sym}: gaps {before_breaks} -> {after}, {recovered} trades recovered from {fetched} transactions")
         return dict(ok=True, **c.repair)
+
+    # ---------- linked wallets (a lean bubble map): who funded the top holders? ----------
+    def funder(self, h, wallet):
+        """(funding wallet, first activity ts, fresh?) of a wallet: the sender of its first SOL. Wallets with a long
+        history (> 2,000 transactions) are not traced (too many credits) and come back as (None, None, False)."""
+        before, oldest, n = None, None, 0
+        for _ in range(2):
+            page = h.rpc("getSignaturesForAddress", [wallet, {"limit": 1000, **({"before": before} if before else {})}])
+            self.repair_calls.append(time.time())
+            if not page:
+                break
+            n += len(page)
+            oldest = page[-1]
+            if len(page) < 1000:
+                break
+            before = page[-1]["signature"]
+        else:
+            return None, None, False                            # long history: an old, busy wallet
+        if not oldest:
+            return None, None, False
+        tx = h.rpc("getTransaction", [oldest["signature"], {"encoding": "json", "maxSupportedTransactionVersion": 1, "commitment": "confirmed"}])
+        self.repair_calls.append(time.time())
+        if not tx:
+            return None, oldest.get("blockTime"), n < 50
+        msg, meta = tx["transaction"]["message"], tx.get("meta") or {}
+        la = meta.get("loadedAddresses") or {}
+        keys = msg["accountKeys"] + la.get("writable", []) + la.get("readonly", [])
+        pre, post = meta.get("preBalances") or [], meta.get("postBalances") or []
+        drops = [(post[i] - pre[i], k) for i, k in enumerate(keys) if i < len(pre) and k != wallet]
+        src = min(drops)[1] if drops and min(drops)[0] < 0 else (keys[0] if keys and keys[0] != wallet else None)
+        first = tx.get("blockTime") or oldest.get("blockTime")
+        return src, first, n < 50 or (first and time.time() - first < 86400)
+
+    def linked(self, mint, force=False):
+        """Top 20 holders grouped by who funded them; share of fresh wallets. Cached 10 min per coin (~60 credits)."""
+        hit = self.linked_cache.get(mint)
+        if hit and not force and time.time() - hit[0] < 600:
+            return hit[1]
+        h = self.wallets.h
+        if not h:
+            return dict(ok=False, error="no Helius key")
+        while self.repair_calls and self.repair_calls[0] < time.time() - 86400:
+            self.repair_calls.popleft()
+        if len(self.repair_calls) > REPAIR_DAILY:
+            return dict(ok=False, error="daily Helius budget used up")
+        with self.lock:
+            c = self.coins.get(mint)
+            if c is None:
+                return dict(ok=False, error="coin not tracked")
+            held = sorted(((w, t) for w, t in c.H.hold.items() if t > 0), key=lambda x: -x[1])[:20]
+            devs = set(c.H.devs)
+        rows = []
+        for w, t in held:
+            try:
+                src, first, fresh = self.funder(h, w)
+            except Exception:
+                src, first, fresh = None, None, False
+            rows.append(dict(wallet=w, share=t / R.SUPPLY, funder=src, first=first, fresh=bool(fresh), dev=w in devs))
+            time.sleep(0.12)
+        groups = {}
+        for r in rows:
+            if r["funder"]:
+                groups.setdefault(r["funder"], []).append(r)
+        # a holder that funded other holders belongs to their group too
+        for r in rows:
+            if r["wallet"] in groups and r not in groups[r["wallet"]]:
+                groups[r["wallet"]].append(r)
+        clusters = []
+        for f, g in groups.items():
+            if len(g) < 2:
+                continue
+            # a funder with a huge history is an exchange / service hot wallet: its users are not "linked"
+            try:
+                busy = len(h.rpc("getSignaturesForAddress", [f, {"limit": 1000}])) >= 1000
+                self.repair_calls.append(time.time())
+            except Exception:
+                busy = False
+            clusters.append(dict(funder=f, wallets=[x["wallet"] for x in g], share=sum(x["share"] for x in g),
+                                 dev=any(x["dev"] for x in g) or f in devs, busy=busy))
+        clusters.sort(key=lambda x: (x["busy"], -x["share"]))
+        out = dict(ok=True, ts=time.time(), holders=rows, clusters=clusters,
+                   linked_share=sum(x["share"] for x in clusters if not x["busy"]),
+                   fresh_share=sum(r["share"] for r in rows if r["fresh"]), traced=sum(1 for r in rows if r["funder"]))
+        self.linked_cache[mint] = (time.time(), out)
+        return out
 
     def smart_worker(self):
         """Every 5 min: the wallets with the most realized profit over the last 24 h across the coins in memory
@@ -1419,6 +1505,8 @@ def serve(t, port):
                     return self.send(200, {"ok": True, "alerts": acc.px_list(uid)})
                 except (KeyError, TypeError, ValueError):
                     return self.send(400, {"ok": False})
+            if p == "/api/linked":
+                return self.send(200, t.linked(str(b.get("mint", ""))[:64], bool(b.get("force"))))
             if p == "/api/repair":
                 return self.send(200, t.repair(str(b.get("mint", ""))[:64], budget=400))
             if p == "/api/whatif":
