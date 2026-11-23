@@ -1,5 +1,5 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react'
-import { useJournal, rangeStart, DEMO_SETTINGS } from './useJournal'
+import { useJournal, rangeStart, effectiveSettings } from './useJournal'
 import { computeSummary, dailyStats, equityCurve, setAllDay, sortByExit, type Summary } from '@/lib/stats'
 import { buildInsights, type Insight } from '@/lib/insights'
 import { computeXp, evaluateAchievements, type AchievementState } from '@/lib/achievements'
@@ -26,7 +26,8 @@ export function AnalyticsProvider({ children }: { children: ReactNode }) {
   const trades = useJournal((s) => s.trades)
   const realSettings = useJournal((s) => s.settings)
   const isDemo = useJournal((s) => s.isDemo)
-  const settings = useMemo(() => (isDemo ? { ...DEMO_SETTINGS, privacy: realSettings.privacy } : realSettings), [isDemo, realSettings])
+  const walletStart = useJournal((s) => s.walletStart)
+  const settings = useMemo(() => effectiveSettings(realSettings, walletStart, trades, isDemo), [isDemo, realSettings, walletStart, trades])
   const filters = useJournal((s) => s.filters)
   setCurrency(settings.currency)
   setAllDay(!isDemo)

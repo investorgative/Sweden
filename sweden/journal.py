@@ -81,6 +81,19 @@ class Journal:
                             exit_mc=(p["proceeds"] / p["sold"] * SUPPLY) if p["sold"] > 0 else 0.0))
         return res, list(cur.values())
 
+    @staticmethod
+    def put_in(wallets, uid, rts, open_, sol_usd):
+        """Today's cash (SOL + USDC) and the cost of the open positions. The journal derives the money put into
+        trading from it: cash + open at cost - the result of the closed trades, so its equity ends at what the wallet
+        really holds (deposits and withdrawals between trades are absorbed into the one starting balance)."""
+        lv = wallets.live.get(uid) or {}
+        if lv.get("sol") is None or not sol_usd:
+            return None
+        usdc = (lv.get("tokens") or {}).get(USDC, 0.0)
+        cash_sol = lv["sol"] + usdc / sol_usd
+        open_sol = sum(p["cost"] for p in open_)
+        return dict(cash_sol=cash_sol, cash_usd=lv["sol"] * sol_usd + usdc, open_sol=open_sol, open_usd=open_sol * sol_usd)
+
     # ---------- the market-cap path (from the terminal's recorded trades) ----------
     def path_of(self, coin, rt, now):
         """(dict, final?) for a round trip from the coin's recorded trades; None if the coin has no trades."""
@@ -221,6 +234,7 @@ class Journal:
                      coin_note=notes.get(r["mint"]), starred=r["mint"] in watch)
             trades.append(r)
         jn, manual, hidden, settings = self.user_data(uid)
+        start = self.put_in(t.wallets, uid, rts, open_, t.usd)
         return dict(ok=True, address=t.wallets.address(uid), trades=trades, open=len(open_), notes=jn, manual=manual,
-                    hidden=hidden, settings=settings, sol_usd=t.usd,
+                    hidden=hidden, settings=settings, sol_usd=t.usd, start=start,
                     me=u.get("settings", {}).get("display_name") or (u.get("email") or "").split("@")[0])

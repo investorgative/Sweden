@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { Download, RotateCcw, Trash2, Keyboard, Database, User, Shield, House, Eye, Users } from 'lucide-react'
-import { useJournal } from '@/store/useJournal'
+import { useJournal, moneyPutIn } from '@/store/useJournal'
 import { Card, SectionTitle, Button, Modal } from '@/components/ui/primitives'
 import { download } from '@/lib/share'
 import { toCsv } from '@/lib/csv'
@@ -41,6 +41,10 @@ export function SettingsPage() {
   const hidden = useJournal((st) => st.hidden)
   const restoreHidden = useJournal((st) => st.restoreHidden)
   const solUsd = useJournal((st) => st.solUsd)
+  const walletStart = useJournal((st) => st.walletStart)
+  const putIn = moneyPutIn(s, walletStart, trades)
+  const cur = s.currency === 'SOL' ? '◎' : '$'
+  const fmt = (v: number) => `${cur}${v.toLocaleString(undefined, { maximumFractionDigits: s.currency === 'SOL' ? 3 : 2 })}`
   const clearAll = useJournal((st) => st.clearAll)
   const [confirm, setConfirm] = useState<'reset' | 'clear' | null>(null)
 
@@ -70,8 +74,25 @@ export function SettingsPage() {
         <Row label="Planned take profit (%)" hint="The target line on each trade">
           <input type="number" min={5} className={`${input} num`} value={s.targetPct} onChange={(e) => update({ targetPct: Math.max(5, +e.target.value || 50) })} />
         </Row>
-        <Row label="Starting balance" hint="Equity before your first journaled trade">
-          <input type="number" className={`${input} num`} value={s.startingBalance} onChange={(e) => update({ startingBalance: +e.target.value || 0 })} />
+        <Row
+          label="Starting balance"
+          hint={
+            s.autoStart
+              ? putIn != null && walletStart
+                ? `From your wallet: the money you put in = today's cash ${fmt(s.currency === 'SOL' ? walletStart.cash_sol : walletStart.cash_usd)} + open positions at cost ${fmt(s.currency === 'SOL' ? walletStart.open_sol : walletStart.open_usd)} − your trading result. Deposits and withdrawals between trades are included in it.`
+                : 'From your wallet - waiting for the wallet balance (the terminal checks it every 2 min while a page is open).'
+              : 'Equity before your first journaled trade'
+          }
+        >
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 text-sm text-ink-2">
+              <input type="checkbox" checked={s.autoStart !== false} onChange={(e) => update({ autoStart: e.target.checked })} /> from my wallet
+              {s.autoStart !== false && putIn != null && <b className="num ml-auto">{fmt(putIn)}</b>}
+            </label>
+            {s.autoStart === false && (
+              <input type="number" className={`${input} num`} value={s.startingBalance} onChange={(e) => update({ startingBalance: +e.target.value || 0 })} />
+            )}
+          </div>
         </Row>
         <Row label="Max daily loss" hint="Breaches are flagged in the Edge Report">
           <input type="number" className={`${input} num`} value={s.maxDailyLoss} onChange={(e) => update({ maxDailyLoss: Math.max(0, +e.target.value || 0) })} />

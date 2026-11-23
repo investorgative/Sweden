@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import type { Settings, Trade } from '@/data/types'
 import { generateTrades } from '@/data/generate'
-import { api, annotationOf, NotLoggedIn, toTrade, type Annotation, type RawTrip } from '@/lib/sweden'
+import { api, annotationOf, NotLoggedIn, toTrade, type Annotation, type RawTrip, type WalletStart } from '@/lib/sweden'
 
 export type RangeKey = '1M' | '3M' | '6M' | 'YTD' | '1Y' | 'ALL'
 
@@ -33,6 +33,7 @@ interface JournalState {
   hidden: string[]
   solUsd: number
   me: string
+  walletStart: WalletStart | null
   refresh: () => Promise<void>
   setDemo: (on: boolean) => void
   restoreHidden: () => void
@@ -62,6 +63,7 @@ export const DEFAULT_SETTINGS: Settings = {
   weekStartsMonday: true,
   stopPct: 30,
   targetPct: 50,
+  autoStart: true,
   shareCircle: false,
 }
 
@@ -115,6 +117,7 @@ export const useJournal = create<JournalState>()((set, get) => ({
   hidden: [],
   solUsd: 0,
   me: '',
+  walletStart: null,
 
   refresh: async () => {
     try {
@@ -128,6 +131,7 @@ export const useJournal = create<JournalState>()((set, get) => ({
         address: p.address,
         openPositions: p.open,
         me: p.me,
+        walletStart: p.start ?? null,
         seenAchievements: seenAchievements ?? [],
         ...(get().isDemo ? {} : { trades: build(next) }),
       })
@@ -255,9 +259,28 @@ export function rangeStart(range: RangeKey, latest: Date): Date | null {
   }
 }
 
+/** The money put into trading: today's cash + open positions at cost - the result of the wallet trades shown, so
+ *  the equity line ends at what the wallet really holds. null while the wallet balance is unknown. */
+export function moneyPutIn(s: Settings, ws: WalletStart | null, trades: Trade[]): number | null {
+  if (!ws) return null
+  const sol = s.currency === 'SOL'
+  const now = sol ? ws.cash_sol + ws.open_sol : ws.cash_usd + ws.open_usd
+  const result = trades.filter((t) => t.source === 'wallet').reduce((a, t) => a + t.pnl, 0)
+  return Math.max(0, now - result)
+}
+
+/** Settings with the starting balance taken from the wallet when "from wallet" is on. */
+export function effectiveSettings(s: Settings, ws: WalletStart | null, trades: Trade[], demo: boolean): Settings {
+  if (demo) return { ...DEMO_SETTINGS, privacy: s.privacy }
+  const put = s.autoStart ? moneyPutIn(s, ws, trades) : null
+  return put == null ? s : { ...s, startingBalance: Math.round(put * 1000) / 1000 }
+}
+
 /** The settings the pages work with: the demo journal has its own (USD, stock-trader sizes). */
 export function useSettings(): Settings {
   const s = useJournal((st) => st.settings)
   const demo = useJournal((st) => st.isDemo)
-  return demo ? { ...DEMO_SETTINGS, privacy: s.privacy } : s
+  const ws = useJournal((st) => st.walletStart)
+  const trades = useJournal((st) => st.trades)
+  return effectiveSettings(s, ws, trades, demo)
 }

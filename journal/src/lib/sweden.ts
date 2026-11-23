@@ -60,6 +60,15 @@ export interface Payload {
   settings: Partial<Settings> & { seenAchievements?: string[] }
   sol_usd: number
   me: string
+  start: WalletStart | null
+}
+
+/** today's cash and open positions at cost (the money put in is derived from it) */
+export interface WalletStart {
+  cash_sol: number
+  cash_usd: number
+  open_sol: number
+  open_usd: number
 }
 
 export interface CircleRow {
