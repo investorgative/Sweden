@@ -14,6 +14,7 @@ that only the cash (SOL) line can be rebuilt from the history.
 import json, os, re, sqlite3, threading, time, urllib.request
 
 WSOL = "So11111111111111111111111111111111111111112"
+USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"   # counts as cash (USD), not as a position
 TOKEN_PROGRAMS = ("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb")
 ADDR_RE = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
 MAX_BACKFILL = 1000
@@ -64,17 +65,26 @@ def deltas(t, me):
                 tok[tb["mint"]] = tok.get(tb["mint"], 0.0) + amt
     sol += tok.pop(WSOL, 0.0)
     tok = {m: v for m, v in tok.items() if abs(v) > 0}
-    if len(tok) == 1:
-        (m, v), = tok.items()
-        kind = "transfer in" if v > 0 and abs(sol) < 0.003 else "transfer out" if v < 0 and abs(sol) < 0.003 else \
-            "buy" if v > 0 else "sell"
-    elif not tok:
-        kind = "sol in" if sol > 0 else "sol out" if sol < 0 else "other"
-    else:
-        kind = "other"
-    if t.get("transactionError"):
-        kind = "failed"
-    return sol, tok, kind
+    return sol, tok, classify(sol, tok, bool(t.get("transactionError")))
+
+
+def classify(sol, tok, failed=False):
+    """buy / sell (paid in SOL or USDC), transfer in / out, swap (SOL <-> USDC), sol / usdc in / out, other, failed."""
+    if failed:
+        return "failed"
+    usdc = tok.get(USDC, 0.0)
+    other = [v for m, v in tok.items() if m != USDC]
+    cash_in, cash_out = sol > 0.003 or usdc > 0.01, sol < -0.003 or usdc < -0.01
+    if len(other) == 1:
+        v = other[0]
+        return ("buy" if cash_out else "transfer in") if v > 0 else ("sell" if cash_in else "transfer out")
+    if other:
+        return "other"
+    if usdc and abs(sol) > 0.003:
+        return "swap"
+    if usdc:
+        return "usdc in" if usdc > 0 else "usdc out"
+    return "sol in" if sol > 0 else "sol out" if sol < 0 else "other"
 
 
 class Wallets:
@@ -245,7 +255,7 @@ class Wallets:
             last = self.db.execute("SELECT MAX(ts) FROM snaps WHERE uid = ?", (uid,)).fetchone()[0] or 0
             if time.time() - last >= SNAP_S:
                 self.db.execute("INSERT INTO snaps VALUES (?, ?, ?, ?, ?, ?)", (uid, time.time(), s["total_usd"],
-                                s["total_vis_usd"], s["cash_sol"], self.sol_usd()))
+                                s["total_vis_usd"], s["cash_usd"], self.sol_usd()))
                 self.db.commit()
 
     # ---------- views ----------
@@ -262,11 +272,13 @@ class Wallets:
         if "sol" not in lv:
             return {"address": addr, "loading": True, "error": lv.get("error"), "has_key": bool(self.h)}
         usd = self.sol_usd()
-        info = self.token_info(list(lv["tokens"]))
+        toks = {m: a for m, a in lv["tokens"].items() if m != USDC}
+        usdc = lv["tokens"].get(USDC, 0.0)
+        info = self.token_info(list(toks))
         hid = self.hidden(uid)
-        vals = {m: a * (info.get(m, (None,))[0] or 0) for m, a in lv["tokens"].items()}
-        cash_usd = lv["sol"] * usd
-        return {"address": addr, "loading": False, "cash_sol": lv["sol"], "cash_usd": cash_usd, "sol_usd": usd,
+        vals = {m: a * (info.get(m, (None,))[0] or 0) for m, a in toks.items()}
+        cash_usd = lv["sol"] * usd + usdc
+        return {"address": addr, "loading": False, "cash_sol": lv["sol"], "usdc": usdc, "cash_usd": cash_usd, "sol_usd": usd,
                 "total_usd": cash_usd + sum(vals.values()),
                 "total_vis_usd": cash_usd + sum(v for m, v in vals.items() if m not in hid),
                 "updated": lv["bal"], "error": lv.get("error")}
@@ -280,17 +292,22 @@ class Wallets:
         with self.lock:
             txs = self.db.execute("SELECT sig, ts, sol, tokens, kind, fee FROM wtx WHERE uid = ? ORDER BY ts", (uid,)).fetchall()
             snaps = self.db.execute("SELECT ts, total, total_vis, cash, sol_usd FROM snaps WHERE uid = ? ORDER BY ts", (uid,)).fetchall()
-        # per token: buys / sells from the history
+        # per token: buys / sells from the history; a trade paid in USDC counts at today's SOL price
+        txs = [(sig, ts, sol, json.loads(tokens), classify(sol, json.loads(tokens), kind == "failed"), fee)
+               for sig, ts, sol, tokens, kind, fee in txs]
         pos = {}
-        for sig, ts, sol, tokens, kind, fee in txs:
-            for m, v in json.loads(tokens).items():
+        for sig, ts, sol, tok, kind, fee in txs:
+            cash = sol + (tok.get(USDC, 0.0) / usd if usd else 0.0)
+            for m, v in tok.items():
+                if m == USDC:
+                    continue
                 p = pos.setdefault(m, dict(bought=0.0, cost=0.0, sold=0.0, proceeds=0.0, first=ts, last=ts, buys=0, sells=0))
                 p["last"] = ts
                 if kind == "buy":
-                    p["bought"] += v; p["cost"] += -sol; p["buys"] += 1
+                    p["bought"] += v; p["cost"] += -cash; p["buys"] += 1
                 elif kind == "sell":
-                    p["sold"] += -v; p["proceeds"] += sol; p["sells"] += 1
-        mints = set(lv["tokens"]) | set(pos)
+                    p["sold"] += -v; p["proceeds"] += cash; p["sells"] += 1
+        mints = (set(lv["tokens"]) | set(pos)) - {USDC}
         info = self.token_info(list(mints))
         open_, closed = [], []
         for m in mints:
@@ -321,17 +338,18 @@ class Wallets:
         def realized_since(sec):
             return sum(r["pnl_sol"] for r in closed if r["pnl_sol"] is not None and r["last"] and r["last"] >= now - sec)
         # cash line rebuilt backwards from today's SOL balance; equity from the snapshots (in SOL)
-        cash, bal = [], lv["sol"]
-        for sig, ts, sol, tokens, kind, fee in reversed(txs):
-            cash.append((ts, bal)); bal -= sol
+        cash, bal = [], lv["sol"] + (lv["tokens"].get(USDC, 0.0) / usd if usd else 0.0)   # SOL + USDC, in SOL
+        for sig, ts, sol, tok, kind, fee in reversed(txs):
+            cash.append((ts, bal)); bal -= sol + (tok.get(USDC, 0.0) / usd if usd else 0.0)
         cash.reverse()
         equity = [(ts, tv / su if su else None) for ts, tot, tv, c, su in snaps]
         tx_rows = []
-        for sig, ts, sol, tokens, kind, fee in reversed(txs[-300:]):
-            tk = json.loads(tokens)
-            m, amt = (next(iter(tk.items())) if len(tk) == 1 else (None, None))
+        for sig, ts, sol, tk, kind, fee in reversed(txs[-300:]):
+            other = {m: v for m, v in tk.items() if m != USDC}
+            m, amt = (next(iter(other.items())) if len(other) == 1 else (None, None))
             i = info.get(m, (None, None, None, None)) if m else (None, None, None, None)
-            tx_rows.append(dict(sig=sig, ts=ts, kind=kind, sol=sol, fee=fee, mint=m, amount=amt, sym=i[2], name=i[1], ntok=len(tk)))
+            tx_rows.append(dict(sig=sig, ts=ts, kind=kind, sol=sol, usdc=tk.get(USDC), fee=fee, mint=m, amount=amt, sym=i[2],
+                                name=i[1], ntok=len(other)))
         unreal = [r["unreal_sol"] for r in open_ if r.get("unreal_sol") is not None and not r["hidden"]]
         return {"summary": s, "open": open_, "closed": closed[:300], "txs": tx_rows, "cash": cash[-2000:], "equity": equity[-5000:],
                 "pnl": {"unreal_sol": sum(unreal), "r24h": realized_since(86400), "r7d": realized_since(7 * 86400),

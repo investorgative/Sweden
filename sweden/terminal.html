@@ -967,7 +967,7 @@ async function delAlert(id) {
 }
 
 // ---------- wallet: header chips and portfolio page (#wallet) ----------
-const wp = { open: false, tab: "open", dust: false, data: null, timer: null, chart: null, eq: null, cash: null, key: "" };
+const wp = { open: false, tab: "open", dust: false, hidden: false, data: null, timer: null, chart: null, eq: null, cash: null, key: "" };
 const money = (x) => x == null ? "–" : Math.abs(x) < 1000 ? "$" + x.toFixed(2) : usd(x);   // 0 is a real balance here
 const sol = (x, d = 3) => x == null ? "–" : (x < 0 ? "−" : "") + "◎" + Math.abs(x).toFixed(Math.abs(x) >= 100 ? 1 : d);
 const solPnl = (x) => x == null ? "–" : `<span class="${x >= 0 ? "green" : "red"}">${x >= 0 ? "+" : "−"}◎${Math.abs(x).toFixed(3)}</span>`;
@@ -977,7 +977,7 @@ function renderWalletChips() {
   if (!w.address) { box.innerHTML = `<button class="wchip" data-wsettings="1" title="Add your wallet in the settings">💼 <small>Add wallet</small></button>`; return; }
   if (w.loading) { box.innerHTML = `<button class="wchip" data-wopen="1">💼 <small>${w.has_key === false ? "no Helius key" : "loading…"}</small></button>`; return; }
   box.innerHTML = `<button class="wchip num" data-wopen="1" title="Total without hidden tokens">💼 ${money(w.total_vis_usd)}</button>` +
-    `<button class="wchip num" data-wopen="1" title="Cash (SOL)">◎${w.cash_sol.toFixed(2)} <small>cash</small></button>`;
+    `<button class="wchip num" data-wopen="1" title="Cash: ◎${w.cash_sol.toFixed(3)}${w.usdc ? " + " + w.usdc.toFixed(2) + " USDC" : ""}">${money(w.cash_usd)} <small>cash</small></button>`;
 }
 document.addEventListener("click", (e) => {
   if (e.target.closest("[data-wopen]")) { location.hash = "#wallet"; }
@@ -995,7 +995,8 @@ function showWallet() {
       <div class="legend"><span><i style="background:var(--blue)"></i>Equity without hidden tokens (since the wallet was added)</span><span><i style="background:var(--yellow)"></i>Cash (SOL, rebuilt from the history)</span></div>
       <div id="wchart"><div class="msg">Loading…</div></div>
       <div class="cp-box"><div class="cp-tabs" style="align-items:center"><button class="tab" data-wtab="open">Open positions</button><button class="tab" data-wtab="closed">Closed</button>
-        <button class="tab" data-wtab="txs">Transactions</button><span class="spacer"></span><label class="wnote" id="wpdustlbl"><input type="checkbox" id="wpdust"> show dust</label></div>
+        <button class="tab" data-wtab="txs">Transactions</button><span class="spacer"></span><span id="wpopts" style="display:flex;gap:12px"><label class="wnote" id="wphidlbl"><input type="checkbox" id="wphid"> show hidden <span id="wphidn"></span></label>
+        <label class="wnote"><input type="checkbox" id="wpdust"> show dust</label></span></div>
         <div class="tlwrap" id="wplist"></div></div>
       <div class="wnote" id="wpnote"></div></div>`;
   el.classList.add("show"); document.body.style.overflow = "hidden"; el.scrollTop = 0;
@@ -1003,6 +1004,7 @@ function showWallet() {
   $("#wpsettings").onclick = () => { openSettings(); setTimeout(() => $("#s_wallet")?.focus(), 50); };
   el.querySelectorAll("[data-wtab]").forEach((b) => b.onclick = () => { wp.tab = b.dataset.wtab; renderWalletList(); });
   $("#wpdust").onchange = (e) => { wp.dust = e.target.checked; renderWalletList(); };
+  $("#wphid").onchange = (e) => { wp.hidden = e.target.checked; renderWalletList(); };
   loadLW().then(buildWChart, () => {});
   wpRefresh(); wp.timer = setInterval(wpRefresh, 10000);
 }
@@ -1062,7 +1064,7 @@ async function wpRefresh() {
   }
   const p = d.pnl || {}, usdOf = (x) => x == null ? "" : `<small>${money(Math.abs(x * s.sol_usd))}</small>`;
   $("#wpkpis").innerHTML = [["Total", money(s.total_vis_usd), `<small>without hidden · ${sol(s.total_vis_usd / s.sol_usd, 2)}</small>`],
-    ["Total incl. hidden", money(s.total_usd), ""], ["Cash", sol(s.cash_sol, 3), `<small>${money(s.cash_usd)}</small>`],
+    ["Total incl. hidden", money(s.total_usd), ""], ["Cash", money(s.cash_usd), `<small>◎${s.cash_sol.toFixed(3)}${s.usdc ? ` + ${s.usdc.toFixed(2)} USDC` : ""}</small>`],
     ["Unrealized", solPnl(p.unreal_sol), usdOf(p.unreal_sol)], ["Realized 24h / 7d", `${solPnl(p.r24h)} <span class="muted">/</span> ${solPnl(p.r7d)}`, ""],
     ["Realized (history)", solPnl(p.rall), usdOf(p.rall)]]
     .map(([k, v, sub]) => `<div class="kpi"><div class="k">${k}</div><div class="v">${v}</div>${sub}</div>`).join("");
@@ -1077,16 +1079,18 @@ const tokCell = (r) => { const img = safeUrl(r.image);
 function renderWalletList() {
   const d = wp.data; if (!d || !d.open) return;
   document.querySelectorAll("[data-wtab]").forEach((b) => b.classList.toggle("on", b.dataset.wtab === wp.tab));
-  $("#wpdustlbl").hidden = wp.tab !== "open";
+  $("#wpopts").hidden = wp.tab !== "open";
+  const nh = d.open.filter((r) => r.hidden).length;
+  $("#wphidn").textContent = nh ? `(${nh})` : "";
   const now = Date.now() / 1000;
   if (wp.tab === "open") {
-    const rows = d.open.filter((r) => wp.dust || !r.dust || r.hidden);
+    const rows = d.open.filter((r) => (wp.hidden || !r.hidden) && (wp.dust || !r.dust));
     $("#wplist").innerHTML = rows.length ? `<table class="tlist num"><tr><th>Token</th><th class="r">Amount</th><th class="r">Value</th><th class="r">Cost</th><th class="r">PnL</th><th></th></tr>` +
       rows.map((r) => { const pc = r.unreal_sol != null && r.cost_open_sol ? r.unreal_sol / r.cost_open_sol : null;
         return `<tr class="${r.hidden || r.dust ? "dim" : ""}"><td data-open="${esc(r.mint)}" style="cursor:pointer">${tokCell(r)}</td><td class="r">${(+r.amount).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
           <td class="r">${money(r.value_usd)}</td><td class="r">${sol(r.cost_open_sol)}</td><td class="r">${solPnl(r.unreal_sol)}${pc != null ? ` <small class="${pc >= 0 ? "green" : "red"}">${pc >= 0 ? "+" : ""}${(pc * 100).toFixed(0)}%</small>` : ""}</td>
           <td class="r"><button class="mini" data-copy="${esc(r.mint)}" title="Copy CA">${ic("copy")}</button><button class="mini" data-whide="${esc(r.mint)}" data-on="${r.hidden ? 0 : 1}" title="${r.hidden ? "Show again" : "Hide (not counted in the total)"}">${ic(r.hidden ? "show" : "hide")}</button></td></tr>`; }).join("") + "</table>"
-      : '<div class="empty">No open positions' + (d.open.length ? " (only dust - tick “show dust”)" : "") + ".</div>";
+      : '<div class="empty">No open positions' + (d.open.length ? " shown (tick “show hidden” or “show dust”)" : "") + ".</div>";
   } else if (wp.tab === "closed") {
     $("#wplist").innerHTML = d.closed.length ? `<table class="tlist num"><tr><th>Token</th><th class="r">Bought</th><th class="r">Sold</th><th class="r">PnL</th><th class="r">Trades</th><th class="r">Last</th></tr>` +
       d.closed.map((r) => `<tr><td data-open="${esc(r.mint)}" style="cursor:pointer">${tokCell(r)}</td><td class="r">${sol(r.cost_sol)}</td><td class="r">${sol(r.proceeds_sol)}</td>
@@ -1094,11 +1098,12 @@ function renderWalletList() {
         <td class="r">${r.buys}/${r.sells}</td><td class="r">${r.last ? secs(now - r.last) : "–"}</td></tr>`).join("") + "</table>"
       : '<div class="empty">No closed positions in the loaded history.</div>';
   } else {
-    const K = { buy: "Buy", sell: "Sell", "transfer in": "Received", "transfer out": "Sent", "sol in": "SOL in", "sol out": "SOL out", failed: "Failed", other: "Other" };
-    $("#wplist").innerHTML = d.txs.length ? `<table class="tlist num"><tr><th>Age</th><th>Type</th><th>Token</th><th class="r">Amount</th><th class="r">SOL</th><th></th></tr>` +
+    const K = { buy: "Buy", sell: "Sell", "transfer in": "Received", "transfer out": "Sent", "sol in": "SOL in", "sol out": "SOL out",
+                swap: "SOL ⇄ USDC", "usdc in": "USDC in", "usdc out": "USDC out", failed: "Failed", other: "Other" };
+    $("#wplist").innerHTML = d.txs.length ? `<table class="tlist num"><tr><th>Age</th><th>Type</th><th>Token</th><th class="r">Amount</th><th class="r">SOL / USDC</th><th></th></tr>` +
       d.txs.map((t) => `<tr class="${t.kind === "buy" ? "buy" : t.kind === "sell" ? "sell" : ""}"><td>${secs(now - t.ts)}</td><td class="side">${K[t.kind] || t.kind}</td>
         <td>${t.mint ? `<span data-open="${esc(t.mint)}" style="cursor:pointer">${esc(t.sym || short(t.mint))}</span>` : t.ntok > 1 ? t.ntok + " tokens" : "–"}</td>
-        <td class="r">${t.amount != null ? (+t.amount).toLocaleString(undefined, { maximumFractionDigits: 2 }) : ""}</td><td class="r">${solPnl(t.sol)}</td>
+        <td class="r">${t.amount != null ? (+t.amount).toLocaleString(undefined, { maximumFractionDigits: 2 }) : ""}</td><td class="r">${solPnl(t.sol)}${t.usdc ? `<br><small class="${t.usdc >= 0 ? "green" : "red"}">${t.usdc >= 0 ? "+" : "−"}${Math.abs(t.usdc).toFixed(2)} USDC</small>` : ""}</td>
         <td><a href="https://solscan.io/tx/${esc(t.sig)}" target="_blank" rel="noopener noreferrer" style="color:var(--muted)">↗</a></td></tr>`).join("") + "</table>"
       : '<div class="empty">No transactions loaded yet.</div>';
   }
