@@ -76,7 +76,7 @@ export function TradeDrawer() {
               </div>
               <div className="mt-2 text-sm text-ink-3">
                 {t.name && <span className="text-ink-2">{t.name} · </span>}
-                {dateLong(t.entryTime)} · {time(t.entryTime)} → {time(t.exitTime)} · held {duration(holdMinutes(t))}
+                {dateLong(t.entryTime)} · {time(t.entryTime)} → {t.open ? 'now' : time(t.exitTime)} · {t.open ? 'holding for' : 'held'} {duration(holdMinutes(t))}
                 {t.ageS != null && <> · bought {duration(t.ageS / 60)} after launch</>}
                 {t.buys != null && <> · {t.buys} buy{t.buys === 1 ? '' : 's'} / {t.sells} sell{t.sells === 1 ? '' : 's'}</>}
               </div>
@@ -114,7 +114,12 @@ export function TradeDrawer() {
               </div>
             )}
 
-            {t.source === 'wallet' && !t.path && (
+            {t.open && (
+              <div className="rounded-2xl border border-info/30 bg-info/[0.06] px-4 py-3 text-[12.5px] text-ink-2">
+                Still open: valued at today's price{t.priced === false ? ' - no price known for this coin (probably dead), so it counts as 0' : ''}. It becomes a normal trade once you sell.
+              </div>
+            )}
+            {t.source === 'wallet' && !t.open && !t.path && (
               <div className="rounded-2xl border border-line px-4 py-3 text-[12px] text-ink-3">
                 No price path for this trade: the coin was no longer in the terminal's memory when it was closed (or the trade is from before the journal). MAE / MFE are estimated from the result.
               </div>
@@ -141,7 +146,7 @@ export function TradeDrawer() {
                 ...(t.source === 'wallet'
                   ? [
                       ['Entry mcap', money(t.entryPrice, { compact: true })],
-                      ['Exit mcap', money(t.exitPrice, { compact: true })],
+                      [t.open ? 'Mcap now' : 'Exit mcap', money(t.exitPrice, { compact: true })],
                       ['Stop mcap', money(t.stopPrice, { compact: true })],
                       ['Target mcap', t.targetPrice ? money(t.targetPrice, { compact: true }) : '—'],
                     ]

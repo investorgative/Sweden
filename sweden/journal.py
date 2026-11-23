@@ -91,8 +91,10 @@ class Journal:
             return None
         usdc = (lv.get("tokens") or {}).get(USDC, 0.0)
         cash_sol = lv["sol"] + usdc / sol_usd
-        open_sol = sum(p["cost"] for p in open_)
-        return dict(cash_sol=cash_sol, cash_usd=lv["sol"] * sol_usd + usdc, open_sol=open_sol, open_usd=open_sol * sol_usd)
+        # what is still invested in open positions: cost minus what partial sells already brought back (in the cash)
+        open_sol = sum(p["cost"] - p["proceeds"] for p in open_)
+        open_usd = sum(p["cost_usd"] - p["proceeds_usd"] for p in open_)
+        return dict(cash_sol=cash_sol, cash_usd=lv["sol"] * sol_usd + usdc, open_sol=open_sol, open_usd=open_usd)
 
     # ---------- the market-cap path (from the terminal's recorded trades) ----------
     def path_of(self, coin, rt, now):
@@ -219,11 +221,32 @@ class Journal:
         u = t.acc.users().get(uid, {})
         notes = u.get("notes", {})
         watch = u.get("watch", set())
-        info = t.wallets.token_info(list({r["mint"] for r in rts}))
+        info = t.wallets.token_info(list({r["mint"] for r in rts} | {p["mint"] for p in open_}))
         meta = self.meta()
+        # open positions as "open" trades, valued at today's price (no price known = valued at 0, e.g. dead coins),
+        # so the journal's equity ends at what the wallet really holds
+        held = (t.wallets.live.get(uid) or {}).get("tokens") or {}
+        now = time.time()
+        opens = []
+        for p in open_:
+            amount = held.get(p["mint"], p["held"]) if held else p["held"]
+            if p["cost"] <= 0 or p["bought"] <= 0:
+                continue
+            price = (info.get(p["mint"]) or (None,))[0]              # USD per token
+            value_usd = amount * price if price else 0.0
+            value_sol = value_usd / t.usd if t.usd else 0.0
+            opens.append(dict(tid=f"{p['mint'][:12]}-{int(p['t0'])}", mint=p["mint"], t0=p["t0"], t1=now, open=True,
+                              priced=bool(price), amount=amount,
+                              cost_sol=p["cost"], proceeds_sol=p["proceeds"] + value_sol,
+                              pnl_sol=p["proceeds"] + value_sol - p["cost"], cost_usd=p["cost_usd"],
+                              pnl_usd=p["proceeds_usd"] + value_usd - p["cost_usd"], tokens=p["bought"], sold=p["sold"],
+                              buys=p["buys"], sells=p["sells"], fees_sol=p["fees"], transferred=p["transfer"],
+                              entry_mc=p["cost"] / p["bought"] * SUPPLY,
+                              exit_mc=(value_sol / amount * SUPPLY) if amount > 0 else 0.0))
         trades = []
-        for r in rts:
+        for r in rts + opens:
             p = paths.get((r["mint"], r["t0"], r["t1"])) or {}
+            r.setdefault("open", False)
             i = info.get(r["mint"]) or (None,) + meta.get(r["mint"], (None, None, None))
             s = sorted(k for k, ts in sigs.get(r["mint"], []) if ts <= r["t0"] + 30)
             r.update(sym=p.get("sym") or i[2] or r["mint"][:4], name=p.get("name") or i[1], image=i[3],

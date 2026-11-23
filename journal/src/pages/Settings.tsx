@@ -79,7 +79,7 @@ export function SettingsPage() {
           hint={
             s.autoStart
               ? putIn != null && walletStart
-                ? `From your wallet: the money you put in = today's cash ${fmt(s.currency === 'SOL' ? walletStart.cash_sol : walletStart.cash_usd)} + open positions at cost ${fmt(s.currency === 'SOL' ? walletStart.open_sol : walletStart.open_usd)} − your trading result. Deposits and withdrawals between trades are included in it.`
+                ? `From your wallet: the money you put in = today's cash ${fmt(s.currency === 'SOL' ? walletStart.cash_sol : walletStart.cash_usd)} + open positions at cost ${fmt(s.currency === 'SOL' ? walletStart.open_sol : walletStart.open_usd)} − the result of your closed trades. Deposits and withdrawals between trades are included in it. Open positions are in the journal at today's value, so the equity ends at what your wallet holds.`
                 : 'From your wallet - waiting for the wallet balance (the terminal checks it every 2 min while a page is open).'
               : 'Equity before your first journaled trade'
           }

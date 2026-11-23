@@ -265,7 +265,7 @@ export function moneyPutIn(s: Settings, ws: WalletStart | null, trades: Trade[])
   if (!ws) return null
   const sol = s.currency === 'SOL'
   const now = sol ? ws.cash_sol + ws.open_sol : ws.cash_usd + ws.open_usd
-  const result = trades.filter((t) => t.source === 'wallet').reduce((a, t) => a + t.pnl, 0)
+  const result = trades.filter((t) => t.source === 'wallet' && !t.open).reduce((a, t) => a + t.pnl, 0)
   return Math.max(0, now - result)
 }
 

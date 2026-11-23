@@ -36,6 +36,9 @@ export interface RawTrip {
   signal: 'entry' | 'recommended' | null
   coin_note: { text: string; tag: string } | null
   starred: boolean
+  /** a position still held: valued at today's price (priced = false: no price known, valued at 0) */
+  open?: boolean
+  priced?: boolean
 }
 
 /** What the user adds to a wallet trade (stored on the Pi). */
@@ -145,6 +148,7 @@ export function autoTags(r: RawTrip) {
   if (r.starred) out.push('watchlist')
   if (r.coin_note?.tag) out.push(`note: ${r.coin_note.tag}`)
   if (r.transferred) out.push('tokens sent away')
+  if (r.open) out.push('open')
   return out
 }
 
@@ -197,6 +201,8 @@ export function toTrade(r: RawTrip, a: Annotation | undefined, s: Settings, solU
     costBasis: cost,
     buys: r.buys,
     sells: r.sells,
+    open: !!r.open,
+    priced: r.priced !== false,
   }
 }
 
