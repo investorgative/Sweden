@@ -1795,6 +1795,14 @@ def serve(t, port):
                 if act == "delete":
                     ok, err = tr.delete(uid, pw)
                     return self.send(200 if ok else 400, {"ok": ok, "error": err})
+                if act == "reclaimable":                            # empty token accounts and their deposit
+                    try:
+                        accs = tr.empty_accounts(uid) if tr.pubkey(uid) else []
+                        return self.send(200, {"ok": True, "n": len(accs), "sol": sum(l for _, _, l in accs) / 1e9})
+                    except Exception as e:
+                        return self.send(200, {"ok": False, "error": str(e)[:120]})
+                if act == "reclaim":
+                    return self.send(200, tr.reclaim_bg(uid))
                 if act == "portfolio":                              # use the trading wallet as the portfolio wallet
                     pub = tr.pubkey(uid)
                     ok = bool(pub) and t.wallets.set_address(uid, pub)

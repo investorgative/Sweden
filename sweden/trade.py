@@ -16,6 +16,8 @@ import nacl.exceptions, nacl.pwhash, nacl.secret, nacl.signing
 SOL = "So11111111111111111111111111111111111111112"
 JUP = "https://lite-api.jup.ag/swap/v1"
 ALPH = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+TOKEN_PROGRAMS = ("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb")
+CLOSE_BATCH = 20              # close-account instructions per transaction
 PREP_MAX_AGE = 8.0            # seconds a prepared transaction may be old when it is used
 RESEND_S, GIVE_UP_S = 2.0, 45.0
 
@@ -57,6 +59,29 @@ def sign_tx(raw, sk):
     return raw[:i] + sig + raw[i + 64:], b58e(sig)
 
 
+def shortvec(n):
+    out = b""
+    while True:
+        x = n & 0x7F; n >>= 7
+        if n:
+            out += bytes([x | 0x80])
+        else:
+            return out + bytes([x])
+
+
+def close_tx(owner, accounts, blockhash):
+    """Unsigned legacy transaction closing empty token accounts [(account, token program)]; the deposit (rent) goes
+    back to the owner. CloseAccount = instruction 9 of both token programs: accounts [account, destination, owner]."""
+    progs = sorted({p for _, p in accounts})
+    keys = [owner] + [a for a, _ in accounts] + progs
+    header = bytes([1, 0, len(progs)])                   # 1 signer (writable), 0 read-only signers, programs read-only
+    ixs = b"".join(bytes([keys.index(p)]) + shortvec(3) + bytes([keys.index(a), 0, 0]) + shortvec(1) + bytes([9])
+                   for a, p in accounts)
+    msg = header + shortvec(len(keys)) + b"".join(b58d(k).rjust(32, b"\0") for k in keys) + b58d(blockhash).rjust(32, b"\0") \
+        + shortvec(len(accounts)) + ixs
+    return shortvec(1) + bytes(64) + msg
+
+
 def parse_secret(text):
     """Seed (32 bytes) from a base58 secret key (64 or 32 bytes) or a JSON byte array (solana-keygen)."""
     t = (text or "").strip()
@@ -86,6 +111,7 @@ class Trader:
         self.prepared = {}            # uid -> dict(key, quote, tx, ts)
         self.balances = {}            # (uid, mint or SOL) -> (ts, raw amount, decimals)
         self.jup_wait = 0.0           # Jupiter rate limit back-off until
+        self.reclaims = {}            # uid -> state of the last "reclaim" run
 
     # ---------- keys ----------
     def pubkey(self, uid):
@@ -288,10 +314,10 @@ class Trader:
                                   "VALUES (?, ?, ?, ?, ?, ?, ?, 'sent', ?, ?)", (uid, time.time(), mint, sym, side, amount, sig, ms, int(used)))
             oid = cur.lastrowid
             self.db.commit()
-        threading.Thread(target=self.follow, args=(oid, uid, mint, signed, sig), daemon=True).start()
+        threading.Thread(target=self.follow, args=(oid, uid, mint, signed, sig, side == "sell" and amount >= 100), daemon=True).start()
         return dict(ok=True, id=oid, sig=sig, ms=ms, prepared=used, quote=summ)
 
-    def follow(self, oid, uid, mint, signed, sig):
+    def follow(self, oid, uid, mint, signed, sig, close_after=False):
         """Re-send until the transaction lands, then record the real amounts."""
         b64 = base64.b64encode(signed).decode()
         t0 = last_send = time.time()
@@ -327,6 +353,13 @@ class Trader:
             self.db.execute("UPDATE torders SET status = ?, error = ?, sol = ?, tokens = ? WHERE id = ?", (status, err, sol, tok, oid))
             self.db.commit()
         log(f"order {oid} user {uid}: {status}{' - ' + err if err else ''}")
+        if status == "confirmed" and close_after:                # sold everything: get the account deposit back
+            try:
+                r = self.reclaim(uid, mint)
+                if r.get("closed"):
+                    log(f"user {uid}: closed {r['closed']} empty token account(s), ◎{r['sol']:.4f} back")
+            except Exception as e:
+                log("close after sell:", repr(e))
 
     @staticmethod
     def error_text(e):
@@ -349,6 +382,66 @@ class Trader:
         wsol = lambda bals: sum(float(b["uiTokenAmount"]["uiAmount"] or 0) for b in bals or [] if b.get("owner") == owner and b.get("mint") == SOL)
         return sol + wsol(meta.get("postTokenBalances")) - wsol(meta.get("preTokenBalances")), tok(meta.get("postTokenBalances")) - tok(meta.get("preTokenBalances"))
 
+    def empty_accounts(self, uid, mint=None):
+        """[(account, program, lamports)] of the wallet's token accounts with a zero balance."""
+        owner = self.pubkey(uid)
+        found = []
+        filters = [{"mint": mint}] if mint else [{"programId": p} for p in TOKEN_PROGRAMS]
+        for f in filters:
+            for a in self.rpc("getTokenAccountsByOwner", [owner, f, {"encoding": "jsonParsed", "commitment": "confirmed"}])["value"]:
+                info = a["account"]["data"]["parsed"]["info"]
+                if int(info["tokenAmount"]["amount"]) == 0 and info.get("state") != "frozen":
+                    found.append((a["pubkey"], a["account"]["owner"], a["account"]["lamports"]))
+        return found
+
+    def reclaim(self, uid, mint=None):
+        """Close the wallet's empty token accounts (all, or those of one coin) in batches; returns closed / SOL back."""
+        sk = self.key(uid)
+        if not sk:
+            return dict(ok=False, error="Trading is locked - unlock it first")
+        accs = self.empty_accounts(uid, mint)
+        if not accs:
+            return dict(ok=True, closed=0, sol=0.0)
+        owner, closed, back = self.pubkey(uid), 0, 0
+        for i in range(0, len(accs), CLOSE_BATCH):
+            chunk = accs[i:i + CLOSE_BATCH]
+            bh = self.rpc("getLatestBlockhash", [{"commitment": "confirmed"}])["value"]["blockhash"]
+            signed, sig = sign_tx(close_tx(owner, [(a, p) for a, p, _ in chunk], bh), sk)
+            b64 = base64.b64encode(signed).decode()
+            self.rpc("sendTransaction", [b64, {"encoding": "base64", "skipPreflight": True, "maxRetries": 0}])
+            ok = False
+            for k in range(40):                                  # up to ~20 s
+                time.sleep(0.5)
+                v = self.rpc("getSignatureStatuses", [[sig]])["value"][0]
+                if v and v.get("confirmationStatus") in ("confirmed", "finalized"):
+                    ok = not v.get("err")
+                    break
+                if k % 4 == 3:
+                    self.rpc("sendTransaction", [b64, {"encoding": "base64", "skipPreflight": True, "maxRetries": 0}])
+            if ok:
+                closed += len(chunk); back += sum(l for _, _, l in chunk)
+        for k in [k for k in self.balances if k[0] == uid]:
+            self.balances.pop(k, None)
+        return dict(ok=True, closed=closed, sol=back / 1e9, failed=len(accs) - closed)
+
+    def reclaim_bg(self, uid):
+        """Start closing all empty token accounts in the background; the result shows in status()."""
+        if (self.reclaims.get(uid) or {}).get("running"):
+            return dict(ok=True, running=True)
+        if not self.key(uid):
+            return dict(ok=False, error="Trading is locked - unlock it first")
+        self.reclaims[uid] = dict(running=True, ts=time.time())
+
+        def run():
+            try:
+                r = self.reclaim(uid)
+            except Exception as e:
+                r = dict(ok=False, error=str(e)[:150])
+            self.reclaims[uid] = dict(r, running=False, ts=time.time())
+            log(f"user {uid}: reclaim {r}")
+        threading.Thread(target=run, daemon=True).start()
+        return dict(ok=True, running=True)
+
     def orders(self, uid, n=30):
         with self.lock:
             rows = self.db.execute("SELECT id, ts, mint, sym, side, amount, sig, status, error, sol, tokens, ms, prepared FROM torders "
@@ -358,7 +451,8 @@ class Trader:
     def status(self, uid, with_balance=False):
         pub = self.pubkey(uid)
         k = self.unlocked.get(uid)
-        out = dict(wallet=pub, unlocked=bool(k and k[1] > time.time()), until=k[1] if k else None, rpc=bool(self.rpc_url))
+        out = dict(wallet=pub, unlocked=bool(k and k[1] > time.time()), until=k[1] if k else None, rpc=bool(self.rpc_url),
+                   reclaim=self.reclaims.get(uid))
         if pub and with_balance:
             try:
                 out["sol"] = self.balance(uid, None, max_age=15.0)[0] / 1e9

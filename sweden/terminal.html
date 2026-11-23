@@ -1443,6 +1443,8 @@ function tradeWalletHtml() {
       <div class="row"><label>Status</label><span>${st.unlocked ? "⚡ unlocked" : "🔒 locked"} ${st.sol != null ? "· " + solTxt(st.sol) : ""}</span>
         <button class="iconbtn" id="ttoggle">${st.unlocked ? "Lock" : "Unlock"}</button></div>
       <div class="row"><label>Portfolio<small>show this wallet on the portfolio page, in the journal and to friends</small></label><button class="iconbtn" id="tport">Use as portfolio wallet</button></div>
+      <div class="row"><label>Empty token accounts<small>each holds a deposit (~◎0.0015) until it is closed; closed automatically after a 100 % sell</small></label>
+        <span id="trcl" class="wnote">${st.reclaim && st.reclaim.running ? "closing…" : st.reclaim && st.reclaim.ok ? `last run: ${st.reclaim.closed} closed, ◎${(+st.reclaim.sol).toFixed(4)} back` : ""}</span><button class="iconbtn" id="trclcheck">Check</button></div>
       <div class="row"><label for="tpw2">Trading password<small>for export / delete</small></label><input type="password" id="tpw2" autocomplete="off"></div>
       <div class="row"><label></label><button class="iconbtn" id="texport">Show secret key (backup)</button><button class="iconbtn" id="tdelete" style="color:var(--red)">Delete wallet</button></div>
       <pre id="tsecretout" style="display:none;white-space:pre-wrap;word-break:break-all;font:12px ui-monospace,monospace;background:var(--panel2);border-radius:8px;padding:8px"></pre>`);
@@ -1453,6 +1455,24 @@ function bindTradeSettings() {
   on("tcreate", async () => { const j = await tradeApi("create", { password: $("#tnewpw").value }); if (!j.ok) return toast(j.error || "Not created", false); toast("Wallet created - send SOL to it, then unlock"); redraw(); });
   on("timport", async () => { const j = await tradeApi("import", { secret: $("#tsecret").value, password: $("#tnewpw").value }); $("#tsecret").value = ""; if (!j.ok) return toast(j.error || "Not imported", false); toast("Wallet imported"); redraw(); });
   on("ttoggle", async () => { if (TRD.st.unlocked) { await tradeApi("lock"); redraw(); } else unlockModal(redraw); });
+  on("trclcheck", async () => {
+    $("#trcl").textContent = "checking…";
+    const j = await tradeApi("reclaimable");
+    if (!j.ok) { $("#trcl").textContent = j.error || "not checked"; return; }
+    $("#trcl").innerHTML = j.n ? `${j.n} empty · ◎${j.sol.toFixed(4)} <button class="iconbtn" id="trclgo">Reclaim</button>` : "none - nothing to reclaim";
+    on("trclgo", async () => {
+      if (!TRD.st.unlocked) return unlockModal();
+      const r = await tradeApi("reclaim");
+      if (!r.ok) return toast(r.error || "Not started", false);
+      $("#trcl").textContent = "closing… (up to a minute)";
+      for (let i = 0; i < 40; i++) {
+        await new Promise((ok) => setTimeout(ok, 3000));
+        const st = await tradeStatus(true);
+        const rc = st && st.reclaim;
+        if (rc && !rc.running) { $("#trcl").textContent = rc.ok ? `${rc.closed} closed, ◎${(+rc.sol).toFixed(4)} back${rc.failed ? ` (${rc.failed} not confirmed - try again)` : ""}` : (rc.error || "failed"); return; }
+      }
+    });
+  });
   on("tport", async () => { const j = await tradeApi("portfolio"); toast(j.ok ? "Portfolio wallet set" : "Not set", !!j.ok); tick(); });
   on("texport", async () => { const j = await tradeApi("export", { password: $("#tpw2").value }); if (!j.ok) return toast(j.error || "Wrong password", false);
     $("#tsecretout").textContent = j.secret + "\n\nAnyone with this key controls the wallet. Store it offline; never paste it in a chat."; $("#tsecretout").style.display = "block"; });
