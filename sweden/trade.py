@@ -82,6 +82,20 @@ def close_tx(owner, accounts, blockhash):
     return shortvec(1) + bytes(64) + msg
 
 
+SYSTEM = "11111111111111111111111111111111"
+RENT_MIN = 890880             # lamports: a wallet must keep 0 or at least this much (rent exemption)
+BASE_FEE = 5000
+
+
+def transfer_tx(owner, to, lamports, blockhash):
+    """Unsigned legacy transaction: System Program transfer (instruction 2) of `lamports` from owner to `to`."""
+    keys = [owner, to, SYSTEM]
+    header = bytes([1, 0, 1])
+    ix = bytes([2]) + shortvec(2) + bytes([0, 1]) + shortvec(12) + (2).to_bytes(4, "little") + int(lamports).to_bytes(8, "little")
+    msg = header + shortvec(3) + b"".join(b58d(k).rjust(32, b"\0") for k in keys) + b58d(blockhash).rjust(32, b"\0") + shortvec(1) + ix
+    return shortvec(1) + bytes(64) + msg
+
+
 def parse_secret(text):
     """Seed (32 bytes) from a base58 secret key (64 or 32 bytes) or a JSON byte array (solana-keygen)."""
     t = (text or "").strip()
@@ -441,6 +455,59 @@ class Trader:
             log(f"user {uid}: reclaim {r}")
         threading.Thread(target=run, daemon=True).start()
         return dict(ok=True, running=True)
+
+    def withdraw(self, uid, password, to, amount):
+        """Send SOL to another address. Needs the trading password every time (not only an unlocked session).
+        amount: SOL, or "max" (everything minus the network fee)."""
+        seed, err = self._open(uid, password)
+        if err:
+            return dict(ok=False, error=err)
+        to = (to or "").strip()
+        try:
+            raw = b58d(to)
+        except ValueError:
+            raw = b""
+        owner = self.pubkey(uid)
+        if len(raw) != 32 or to == owner:
+            return dict(ok=False, error="That is not a valid Solana address" if to != owner else "That is the trading wallet itself")
+        bal = self.rpc("getBalance", [owner, {"commitment": "confirmed"}])["value"]
+        if str(amount).lower() == "max":
+            lam = bal - BASE_FEE
+        else:
+            try:
+                lam = int(round(float(amount) * 1e9))
+            except (TypeError, ValueError):
+                return dict(ok=False, error="bad amount")
+        left = bal - lam - BASE_FEE
+        if lam <= 0 or left < 0:
+            return dict(ok=False, error=f"not enough SOL (the wallet has ◎{bal / 1e9:.6f}, the fee is ◎0.000005)")
+        if 0 < left < RENT_MIN:
+            return dict(ok=False, error=f"leave at least ◎{RENT_MIN / 1e9:.6f} in the wallet or use Max (a wallet must keep 0 or that minimum)")
+        to_bal = self.rpc("getBalance", [to, {"commitment": "confirmed"}])["value"]
+        if to_bal == 0 and lam < RENT_MIN:
+            return dict(ok=False, error=f"an empty address needs at least ◎{RENT_MIN / 1e9:.6f}")
+        sk = nacl.signing.SigningKey(seed)
+        bh = self.rpc("getLatestBlockhash", [{"commitment": "confirmed"}])["value"]["blockhash"]
+        signed, sig = sign_tx(transfer_tx(owner, to, lam, bh), sk)
+        b64 = base64.b64encode(signed).decode()
+        self.rpc("sendTransaction", [b64, {"encoding": "base64", "skipPreflight": False, "maxRetries": 0}])
+        status, err = "sent", None
+        for k in range(60):                                      # up to ~30 s
+            time.sleep(0.5)
+            v = self.rpc("getSignatureStatuses", [[sig]])["value"][0]
+            if v and v.get("confirmationStatus") in ("confirmed", "finalized"):
+                status, err = ("failed", self.error_text(v["err"])) if v.get("err") else ("confirmed", None)
+                break
+            if k % 4 == 3:
+                self.rpc("sendTransaction", [b64, {"encoding": "base64", "skipPreflight": True, "maxRetries": 0}])
+        with self.lock:
+            self.db.execute("INSERT INTO torders (uid, ts, mint, sym, side, amount, sig, status, error, sol, ms, prepared) "
+                            "VALUES (?, ?, ?, 'SOL', 'withdraw', ?, ?, ?, ?, ?, 0, 0)", (uid, time.time(), to, lam / 1e9, sig, status, err, -lam / 1e9))
+            self.db.commit()
+        self.balances.pop((uid, SOL), None)
+        log(f"user {uid}: withdraw ◎{lam / 1e9:.6f} to {to[:6]}… {status}")
+        return dict(ok=status == "confirmed", sig=sig, sol=lam / 1e9, status=status,
+                    error=err or (None if status == "confirmed" else "not confirmed within 30 s - check the transaction"))
 
     def orders(self, uid, n=30):
         with self.lock:

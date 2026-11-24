@@ -1445,7 +1445,11 @@ function tradeWalletHtml() {
       <div class="row"><label>Portfolio<small>show this wallet on the portfolio page, in the journal and to friends</small></label><button class="iconbtn" id="tport">Use as portfolio wallet</button></div>
       <div class="row"><label>Empty token accounts<small>each holds a deposit (~◎0.0015) until it is closed; closed automatically after a 100 % sell</small></label>
         <span id="trcl" class="wnote">${st.reclaim && st.reclaim.running ? "closing…" : st.reclaim && st.reclaim.ok ? `last run: ${st.reclaim.closed} closed, ◎${(+st.reclaim.sol).toFixed(4)} back` : ""}</span><button class="iconbtn" id="trclcheck">Check</button></div>
-      <div class="row"><label for="tpw2">Trading password<small>for export / delete</small></label><input type="password" id="tpw2" autocomplete="off"></div>
+      <div class="row"><label for="twto">Withdraw SOL<small>to any Solana address (sell coins first)</small></label><input type="text" id="twto" placeholder="Address" autocomplete="off" spellcheck="false"></div>
+      <div class="row"><label for="twamt">Amount</label><input type="text" id="twamt" inputmode="decimal" placeholder="◎ or max" autocomplete="off" style="width:110px">
+        <button class="iconbtn" id="twmax">Max</button><button class="iconbtn" id="twgo">Withdraw</button></div>
+      <div class="row"><label for="tpw2">Trading password<small>needed for withdraw / export / delete, every time</small></label><input type="password" id="tpw2" autocomplete="off"></div>
+      <div id="twout" class="wnote"></div>
       <div class="row"><label></label><button class="iconbtn" id="texport">Show secret key (backup)</button><button class="iconbtn" id="tdelete" style="color:var(--red)">Delete wallet</button></div>
       <pre id="tsecretout" style="display:none;white-space:pre-wrap;word-break:break-all;font:12px ui-monospace,monospace;background:var(--panel2);border-radius:8px;padding:8px"></pre>`);
 }
@@ -1455,6 +1459,18 @@ function bindTradeSettings() {
   on("tcreate", async () => { const j = await tradeApi("create", { password: $("#tnewpw").value }); if (!j.ok) return toast(j.error || "Not created", false); toast("Wallet created - send SOL to it, then unlock"); redraw(); });
   on("timport", async () => { const j = await tradeApi("import", { secret: $("#tsecret").value, password: $("#tnewpw").value }); $("#tsecret").value = ""; if (!j.ok) return toast(j.error || "Not imported", false); toast("Wallet imported"); redraw(); });
   on("ttoggle", async () => { if (TRD.st.unlocked) { await tradeApi("lock"); redraw(); } else unlockModal(redraw); });
+  on("twmax", () => { $("#twamt").value = "max"; });
+  on("twgo", async () => {
+    const to = $("#twto").value.trim(), amount = $("#twamt").value.trim().replace(",", "."), pw = $("#tpw2").value;
+    if (!to || !amount) return toast("Address and amount", false);
+    if (!pw) return toast("Enter your trading password below", false);
+    if (!confirm(`Send ${amount === "max" ? "ALL SOL" : "◎" + amount} to\n${to}\n\nTransfers cannot be undone. Check the address.`)) return;
+    $("#twout").textContent = "sending…"; $("#twgo").disabled = true;
+    const j = await tradeApi("withdraw", { to, amount, password: pw });
+    $("#twgo").disabled = false;
+    $("#twout").innerHTML = j.sig ? `${j.ok ? "✅ sent" : "⚠️ " + esc(j.error || "")} ◎${(+j.sol).toFixed(6)} · <a href="https://solscan.io/tx/${j.sig}" target="_blank" rel="noopener noreferrer">transaction</a>` : `<span class="red">${esc(j.error || "not sent")}</span>`;
+    if (j.ok) { $("#tpw2").value = ""; tradeStatus(true); }
+  });
   on("trclcheck", async () => {
     $("#trcl").textContent = "checking…";
     const j = await tradeApi("reclaimable");

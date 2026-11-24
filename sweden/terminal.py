@@ -1801,6 +1801,12 @@ def serve(t, port):
                         return self.send(200, {"ok": True, "n": len(accs), "sol": sum(l for _, _, l in accs) / 1e9})
                     except Exception as e:
                         return self.send(200, {"ok": False, "error": str(e)[:120]})
+                if act == "withdraw":
+                    try:
+                        out = tr.withdraw(uid, pw, str(b.get("to", ""))[:60], b.get("amount"))
+                    except Exception as e:
+                        out = dict(ok=False, error=str(e)[:150])
+                    return self.send(200 if out.get("ok") else 400, out)
                 if act == "reclaim":
                     return self.send(200, tr.reclaim_bg(uid))
                 if act == "portfolio":                              # use the trading wallet as the portfolio wallet
